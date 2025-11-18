@@ -1,0 +1,7 @@
+# Build artifacts
+build/
+
+# eBPF build artifacts
+bpf/vmlinux.h
+
+*.o
