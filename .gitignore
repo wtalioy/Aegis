@@ -4,4 +4,5 @@ build/
 # eBPF build artifacts
 bpf/vmlinux.h
 
+*.log
 *.o
