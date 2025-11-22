@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"time"
@@ -18,14 +19,38 @@ type Printer struct {
 	jsonLines bool
 	resolver  *proc.Resolver
 	meter     *metrics.RateMeter
+	logFile   *os.File
+	writer    io.Writer
 }
 
-func NewPrinter(jsonLines bool, resolver *proc.Resolver, meter *metrics.RateMeter) *Printer {
-	return &Printer{
+func NewPrinter(jsonLines bool, resolver *proc.Resolver, meter *metrics.RateMeter, logPath string) (*Printer, error) {
+	// Check if log rotation is needed
+	if err := rotateLogIfNeeded(logPath); err != nil {
+		log.Printf("Warning: log rotation failed: %v", err)
+	}
+
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open log file: %w", err)
+	}
+
+	p := &Printer{
 		jsonLines: jsonLines,
 		resolver:  resolver,
 		meter:     meter,
+		logFile:   f,
+		writer:    io.MultiWriter(os.Stdout, f),
 	}
+
+	log.Printf("Logging to file: %s", logPath)
+	return p, nil
+}
+
+func (p *Printer) Close() error {
+	if p.logFile != nil {
+		return p.logFile.Close()
+	}
+	return nil
 }
 
 func (p *Printer) Print(ev events.ExecEvent) events.ProcessedEvent {
@@ -62,7 +87,7 @@ func (p *Printer) Print(ev events.ExecEvent) events.ProcessedEvent {
 	}
 
 	if p.jsonLines {
-		enc := json.NewEncoder(os.Stdout)
+		enc := json.NewEncoder(p.writer)
 		enc.SetEscapeHTML(false)
 		if err := enc.Encode(meta); err != nil {
 			log.Printf("json encode failed: %v", err)
@@ -70,7 +95,7 @@ func (p *Printer) Print(ev events.ExecEvent) events.ProcessedEvent {
 		return meta
 	}
 
-	fmt.Printf("[%s] Process executed: PID=%d(%s) ← PPID=%d(%s) | Cgroup=%d | %.1f ev/s\n",
+	fmt.Fprintf(p.writer, "[%s] Process executed: PID=%d(%s) ← PPID=%d(%s) | Cgroup=%d | %.1f ev/s\n",
 		meta.Timestamp.Format(time.RFC3339),
 		meta.Event.PID, meta.Process,
 		meta.Event.PPID, meta.Parent,
@@ -81,9 +106,6 @@ func (p *Printer) Print(ev events.ExecEvent) events.ProcessedEvent {
 }
 
 func (p *Printer) PrintAlert(alert rules.Alert) {
-	severityColor := getSeverityColor(alert.Rule.Severity)
-	resetColor := "\033[0m"
-
 	if p.jsonLines {
 		alertData := map[string]interface{}{
 			"type":        "alert",
@@ -97,7 +119,7 @@ func (p *Printer) PrintAlert(alert rules.Alert) {
 			"parent":      alert.Event.Parent,
 			"cgroup_id":   alert.Event.Event.CgroupID,
 		}
-		enc := json.NewEncoder(os.Stdout)
+		enc := json.NewEncoder(p.writer)
 		enc.SetEscapeHTML(false)
 		if err := enc.Encode(alertData); err != nil {
 			log.Printf("json encode alert failed: %v", err)
@@ -105,13 +127,25 @@ func (p *Printer) PrintAlert(alert rules.Alert) {
 		return
 	}
 
-	fmt.Printf("%s[Alert!] Rule '%s' triggered [Severity: %s]%s\n",
+	severityColor := getSeverityColor(alert.Rule.Severity)
+	resetColor := "\033[0m"
+
+	fmt.Fprintf(os.Stdout, "%s[Alert!] Rule '%s' triggered [Severity: %s]%s\n",
 		severityColor,
 		alert.Rule.Name,
 		alert.Rule.Severity,
 		resetColor)
-	fmt.Printf("  Description: %s\n", alert.Message)
-	fmt.Printf("  Process: PID=%d(%s) ← PPID=%d(%s) | Cgroup=%d\n",
+	fmt.Fprintf(os.Stdout, "  Description: %s\n", alert.Message)
+	fmt.Fprintf(os.Stdout, "  Process: PID=%d(%s) ← PPID=%d(%s) | Cgroup=%d\n",
+		alert.Event.Event.PID, alert.Event.Process,
+		alert.Event.Event.PPID, alert.Event.Parent,
+		alert.Event.Event.CgroupID)
+
+	fmt.Fprintf(p.logFile, "[Alert!] Rule '%s' triggered [Severity: %s]\n",
+		alert.Rule.Name,
+		alert.Rule.Severity)
+	fmt.Fprintf(p.logFile, "  Description: %s\n", alert.Message)
+	fmt.Fprintf(p.logFile, "  Process: PID=%d(%s) ← PPID=%d(%s) | Cgroup=%d\n",
 		alert.Event.Event.PID, alert.Event.Process,
 		alert.Event.Event.PPID, alert.Event.Parent,
 		alert.Event.Event.CgroupID)

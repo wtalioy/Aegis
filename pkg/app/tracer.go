@@ -60,7 +60,12 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 
 	resolver := proc.NewResolver(5 * time.Second)
 	meter := metrics.NewRateMeter(2 * time.Second)
-	printer := output.NewPrinter(t.opts.JSONLines, resolver, meter)
+
+	printer, err := output.NewPrinter(t.opts.JSONLines, resolver, meter, t.opts.LogFile)
+	if err != nil {
+		return fmt.Errorf("failed to create printer: %w", err)
+	}
+	defer printer.Close()
 
 	// Load rules
 	loadedRules, err := rules.LoadRules(t.opts.RulesPath)
