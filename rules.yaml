@@ -1,0 +1,51 @@
+rules:
+  - name: "Detect Bash Execution"
+    description: "Detect bash shell execution, which may indicate an interactive session or script execution"
+    severity: "info"
+    match:
+      process_name: "bash"
+    action: "alert"
+
+  - name: "Detect Suspicious Shell Execution"
+    description: "Detect sh shell execution, commonly seen in malicious scripts"
+    severity: "warning"
+    match:
+      process_name: "sh"
+    action: "alert"
+
+  - name: "Detect Bash in Container"
+    description: "Detect bash execution in container, which may indicate container escape or unauthorized access"
+    severity: "high"
+    match:
+      process_name: "bash"
+      in_container: true
+    action: "alert"
+
+  - name: "Detect Python Execution"
+    description: "Detect Python interpreter execution"
+    severity: "info"
+    match:
+      process_name: "python"
+    action: "alert"
+
+  - name: "Detect Docker Command"
+    description: "Detect docker command execution, which may indicate container management activity"
+    severity: "warning"
+    match:
+      process_name: "docker"
+    action: "alert"
+
+  - name: "Detect Curl Download"
+    description: "Detect curl command, which may be used to download malicious files"
+    severity: "warning"
+    match:
+      process_name: "curl"
+    action: "alert"
+
+  - name: "Detect Wget Download"
+    description: "Detect wget command, which may be used to download malicious files"
+    severity: "warning"
+    match:
+      process_name: "wget"
+    action: "alert"
+

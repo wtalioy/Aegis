@@ -16,6 +16,7 @@ import (
 	"eulerguard/pkg/metrics"
 	"eulerguard/pkg/output"
 	"eulerguard/pkg/proc"
+	"eulerguard/pkg/rules"
 
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
@@ -61,6 +62,18 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 	meter := metrics.NewRateMeter(2 * time.Second)
 	printer := output.NewPrinter(t.opts.JSONLines, resolver, meter)
 
+	// Load rules
+	loadedRules, err := rules.LoadRules(t.opts.RulesPath)
+	if err != nil {
+		log.Printf("Warning: failed to load rules from %s: %v", t.opts.RulesPath, err)
+		log.Printf("Continuing without rules...")
+		loadedRules = []rules.Rule{}
+	} else {
+		log.Printf("Loaded %d detection rules from %s", len(loadedRules), t.opts.RulesPath)
+	}
+
+	ruleEngine := rules.NewEngine(loadedRules)
+
 	log.Printf("EulerGuard execve tracer ready (BPF object: %s)", t.opts.BPFPath)
 
 	for {
@@ -80,20 +93,28 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 			return err
 		}
 
-		printer.Print(ev)
+		// Print the event and get the processed event
+		processedEvent := printer.Print(ev)
+
+		// Match against rules
+		alerts := ruleEngine.Match(processedEvent)
+		for _, alert := range alerts {
+			printer.PrintAlert(alert)
+		}
 	}
 }
 
 func decodeExecEvent(data []byte) (events.ExecEvent, error) {
-	if len(data) < 40 {
+	if len(data) < 48 {
 		return events.ExecEvent{}, fmt.Errorf("exec event payload too small: %d bytes", len(data))
 	}
 
 	var ev events.ExecEvent
 	ev.PID = binary.LittleEndian.Uint32(data[0:4])
 	ev.PPID = binary.LittleEndian.Uint32(data[4:8])
-	copy(ev.Comm[:], data[8:24])
-	copy(ev.PComm[:], data[24:40])
+	ev.CgroupID = binary.LittleEndian.Uint64(data[8:16])
+	copy(ev.Comm[:], data[16:32])
+	copy(ev.PComm[:], data[32:48])
 
 	return ev, nil
 }

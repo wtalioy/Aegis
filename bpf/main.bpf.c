@@ -8,6 +8,7 @@
 struct exec_event {
     u32 pid;
     u32 ppid;
+    u64 cgroup_id;
     char comm[TASK_COMM_LEN];
     char pcomm[TASK_COMM_LEN];
 };
@@ -40,6 +41,7 @@ int handle_exec(struct trace_event_raw_sched_process_exec* ctx)
 
     event->pid = pid;
     event->ppid = get_parent_pid(task);
+    event->cgroup_id = bpf_get_current_cgroup_id();
     bpf_get_current_comm(&event->comm, sizeof(event->comm));
 
     // Get parent process name
