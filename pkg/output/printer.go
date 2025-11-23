@@ -11,19 +11,17 @@ import (
 
 	"eulerguard/pkg/events"
 	"eulerguard/pkg/metrics"
-	"eulerguard/pkg/proc"
 	"eulerguard/pkg/rules"
 )
 
 type Printer struct {
 	jsonLines bool
-	resolver  *proc.Resolver
 	meter     *metrics.RateMeter
 	logFile   *os.File
 	writer    io.Writer
 }
 
-func NewPrinter(jsonLines bool, resolver *proc.Resolver, meter *metrics.RateMeter, logPath string) (*Printer, error) {
+func NewPrinter(jsonLines bool, meter *metrics.RateMeter, logPath string) (*Printer, error) {
 	// Check if log rotation is needed
 	if err := rotateLogIfNeeded(logPath); err != nil {
 		log.Printf("Warning: log rotation failed: %v", err)
@@ -36,7 +34,6 @@ func NewPrinter(jsonLines bool, resolver *proc.Resolver, meter *metrics.RateMete
 
 	p := &Printer{
 		jsonLines: jsonLines,
-		resolver:  resolver,
 		meter:     meter,
 		logFile:   f,
 		writer:    io.MultiWriter(os.Stdout, f),
@@ -60,10 +57,8 @@ func (p *Printer) Print(ev events.ExecEvent) events.ProcessedEvent {
 		commBytes = commBytes[:idx]
 	}
 	processName := string(commBytes)
-
-	// Fallback to resolver if comm is empty
 	if processName == "" {
-		processName = p.resolver.Lookup(ev.PID)
+		processName = "unknown"
 	}
 
 	// Extract parent comm from event
@@ -72,10 +67,8 @@ func (p *Printer) Print(ev events.ExecEvent) events.ProcessedEvent {
 		pcommBytes = pcommBytes[:idx]
 	}
 	parentName := string(pcommBytes)
-
-	// Fallback to resolver if pcomm is empty
 	if parentName == "" {
-		parentName = p.resolver.Lookup(ev.PPID)
+		parentName = "unknown"
 	}
 
 	meta := events.ProcessedEvent{

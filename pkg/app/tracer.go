@@ -15,7 +15,6 @@ import (
 	"eulerguard/pkg/events"
 	"eulerguard/pkg/metrics"
 	"eulerguard/pkg/output"
-	"eulerguard/pkg/proc"
 	"eulerguard/pkg/rules"
 
 	"github.com/cilium/ebpf/link"
@@ -58,10 +57,9 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 		_ = reader.Close()
 	}()
 
-	resolver := proc.NewResolver(5 * time.Second)
 	meter := metrics.NewRateMeter(2 * time.Second)
 
-	printer, err := output.NewPrinter(t.opts.JSONLines, resolver, meter, t.opts.LogFile)
+	printer, err := output.NewPrinter(t.opts.JSONLines, meter, t.opts.LogFile)
 	if err != nil {
 		return fmt.Errorf("failed to create printer: %w", err)
 	}
