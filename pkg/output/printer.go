@@ -3,7 +3,6 @@ package output
 import (
 	"bufio"
 	"encoding/json"
-	"eulerguard/pkg/config"
 	"eulerguard/pkg/events"
 	"eulerguard/pkg/metrics"
 	"eulerguard/pkg/proctree"
@@ -18,7 +17,6 @@ import (
 	"time"
 )
 
-// threadSafeWriter wraps an io.Writer with a mutex to make it thread-safe
 type threadSafeWriter struct {
 	mu     *sync.Mutex
 	writer io.Writer
@@ -39,11 +37,10 @@ type Printer struct {
 	flushTimer *time.Ticker
 	stopFlush  chan struct{}
 	closeOnce  sync.Once
-	mu         *sync.Mutex // Protects logWriter from concurrent access
+	mu         *sync.Mutex
 }
 
 func NewPrinter(jsonLines bool, meter *metrics.RateMeter, logPath string, bufferSize int) (*Printer, error) {
-	// Check if log rotation is needed
 	if err := rotateLogIfNeeded(logPath); err != nil {
 		log.Printf("Warning: log rotation failed: %v", err)
 	}
@@ -53,17 +50,8 @@ func NewPrinter(jsonLines bool, meter *metrics.RateMeter, logPath string, buffer
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
 
-	// Create buffered writer for log file
-	if bufferSize <= 0 {
-		bufferSize = config.DefaultLogBufferSize
-	}
 	logWriter := bufio.NewWriterSize(f, bufferSize)
-
-	// Create mutex to protect logWriter from concurrent access
-	// This mutex will be shared between writes (via threadSafeWriter) and flushes
 	mu := &sync.Mutex{}
-
-	// Create thread-safe wrapper for logWriter to prevent race conditions
 	tsLogWriter := &threadSafeWriter{
 		mu:     mu,
 		writer: logWriter,
@@ -77,7 +65,7 @@ func NewPrinter(jsonLines bool, meter *metrics.RateMeter, logPath string, buffer
 		writer:     io.MultiWriter(os.Stdout, tsLogWriter),
 		flushTimer: time.NewTicker(1 * time.Second),
 		stopFlush:  make(chan struct{}),
-		mu:         mu, // Share the mutex for flush operations
+		mu:         mu,
 	}
 
 	// Start periodic flush goroutine
@@ -103,7 +91,6 @@ func NewPrinter(jsonLines bool, meter *metrics.RateMeter, logPath string, buffer
 func (p *Printer) Close() error {
 	var closeErr error
 
-	// Ensure Close is idempotent - only execute cleanup once
 	p.closeOnce.Do(func() {
 		// Stop flush goroutine
 		if p.flushTimer != nil {
@@ -122,7 +109,6 @@ func (p *Printer) Close() error {
 			p.mu.Unlock()
 		}
 
-		// Close file
 		if p.logFile != nil {
 			closeErr = p.logFile.Close()
 		}
@@ -132,13 +118,11 @@ func (p *Printer) Close() error {
 }
 
 func (p *Printer) Print(ev events.ExecEvent) events.ProcessedEvent {
-	// Extract and normalize comm from event (null-terminated C string)
 	processName := strings.TrimSpace(utils.ExtractCString(ev.Comm[:]))
 	if processName == "" {
 		processName = "unknown"
 	}
 
-	// Extract and normalize parent comm from event
 	parentName := strings.TrimSpace(utils.ExtractCString(ev.PComm[:]))
 	if parentName == "" {
 		parentName = "unknown"
@@ -173,7 +157,7 @@ func (p *Printer) Print(ev events.ExecEvent) events.ProcessedEvent {
 
 func (p *Printer) PrintAlert(alert rules.Alert) {
 	if p.jsonLines {
-		alertData := map[string]interface{}{
+		alertData := map[string]any{
 			"type":        "alert",
 			"timestamp":   alert.Event.Timestamp.Format(time.RFC3339),
 			"rule_name":   alert.Rule.Name,
@@ -193,24 +177,20 @@ func (p *Printer) PrintAlert(alert rules.Alert) {
 		return
 	}
 
-	// Format alert text once
 	alertText := formatAlertText(alert.Rule.Name, alert.Rule.Severity, alert.Message,
 		alert.Event.Event.PID, alert.Event.Process,
 		alert.Event.Event.PPID, alert.Event.Parent,
 		alert.Event.Event.CgroupID)
 
-	// Output to stdout with colors
 	severityColor := getSeverityColor(alert.Rule.Severity)
 	resetColor := "\033[0m"
 	fmt.Fprintf(os.Stdout, "%s%s%s", severityColor, alertText, resetColor)
 
-	// Output to log file without colors (protected by mutex)
 	p.mu.Lock()
 	fmt.Fprint(p.logWriter, alertText)
 	p.mu.Unlock()
 }
 
-// formatAlertText creates the alert message text
 func formatAlertText(ruleName, severity, description string, pid uint32, process string, ppid uint32, parent string, cgroupID uint64) string {
 	return fmt.Sprintf("[Alert!] Rule '%s' triggered [Severity: %s]\n"+
 		"  Description: %s\n"+
@@ -221,7 +201,7 @@ func formatAlertText(ruleName, severity, description string, pid uint32, process
 
 func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proctree.ProcessInfo, rule *rules.Rule, filename string) {
 	if p.jsonLines {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"type":        "file_access_alert",
 			"timestamp":   time.Now().UTC().Format(time.RFC3339),
 			"rule_name":   rule.Name,
@@ -241,22 +221,18 @@ func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proctree
 		return
 	}
 
-	// Format alert text once
 	alertText := formatFileAlertText(rule.Name, rule.Severity, rule.Description,
 		filename, ev.PID, ev.CgroupID, ev.Flags, chain)
 
-	// Output to stdout with colors
 	severityColor := getSeverityColor(rule.Severity)
 	resetColor := "\033[0m"
 	fmt.Fprintf(os.Stdout, "%s%s%s", severityColor, alertText, resetColor)
 
-	// Output to log file without colors (protected by mutex)
 	p.mu.Lock()
 	fmt.Fprint(p.logWriter, alertText)
 	p.mu.Unlock()
 }
 
-// formatFileAlertText creates the file alert message text
 func formatFileAlertText(ruleName, severity, description, filename string,
 	pid uint32, cgroupID uint64, flags uint32, chain []*proctree.ProcessInfo) string {
 
@@ -281,10 +257,10 @@ func formatChain(chain []*proctree.ProcessInfo) string {
 	return strings.Join(parts, " -> ")
 }
 
-func formatChainJSON(chain []*proctree.ProcessInfo) []map[string]interface{} {
-	result := make([]map[string]interface{}, len(chain))
+func formatChainJSON(chain []*proctree.ProcessInfo) []map[string]any {
+	result := make([]map[string]any, len(chain))
 	for i, info := range reverseChain(chain) {
-		result[i] = map[string]interface{}{
+		result[i] = map[string]any{
 			"pid":       info.PID,
 			"ppid":      info.PPID,
 			"comm":      info.Comm,
@@ -294,7 +270,6 @@ func formatChainJSON(chain []*proctree.ProcessInfo) []map[string]interface{} {
 	return result
 }
 
-// reverseChain returns the chain in reverse order (oldest ancestor first)
 func reverseChain(chain []*proctree.ProcessInfo) []*proctree.ProcessInfo {
 	reversed := make([]*proctree.ProcessInfo, len(chain))
 	for i, info := range chain {

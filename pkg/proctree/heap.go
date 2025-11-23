@@ -6,11 +6,10 @@ import (
 	"time"
 )
 
-// heapItem represents an item in the min-heap
 type heapItem struct {
 	pid       uint32
 	timestamp time.Time
-	index     int // index in heap
+	index     int
 }
 
 // minHeap implements heap.Interface for time-based ordering
@@ -24,19 +23,19 @@ func (h minHeap) Swap(i, j int) {
 	h[j].index = j
 }
 
-func (h *minHeap) Push(x interface{}) {
+func (h *minHeap) Push(x any) {
 	n := len(*h)
 	item := x.(*heapItem)
 	item.index = n
 	*h = append(*h, item)
 }
 
-func (h *minHeap) Pop() interface{} {
+func (h *minHeap) Pop() any {
 	old := *h
 	n := len(old)
 	item := old[n-1]
-	old[n-1] = nil  // avoid memory leak
-	item.index = -1 // for safety
+	old[n-1] = nil
+	item.index = -1
 	*h = old[0 : n-1]
 	return item
 }
@@ -53,19 +52,16 @@ func newTimeIndex() *timeIndex {
 		heap:      make(minHeap, 0),
 		pidToItem: make(map[uint32]*heapItem),
 	}
-	// No need to call heap.Init on empty heap
 }
 
 func (ti *timeIndex) Add(pid uint32, timestamp time.Time) {
 	ti.mu.Lock()
 	defer ti.mu.Unlock()
 
-	// If already exists, remove old entry
 	if oldItem, exists := ti.pidToItem[pid]; exists {
 		heap.Remove(&ti.heap, oldItem.index)
 	}
 
-	// Add new entry
 	item := &heapItem{
 		pid:       pid,
 		timestamp: timestamp,
@@ -84,7 +80,6 @@ func (ti *timeIndex) Remove(pid uint32) {
 	}
 }
 
-// PopOldest returns and removes the oldest PID
 func (ti *timeIndex) PopOldest() (uint32, bool) {
 	ti.mu.Lock()
 	defer ti.mu.Unlock()
@@ -98,7 +93,6 @@ func (ti *timeIndex) PopOldest() (uint32, bool) {
 	return item.pid, true
 }
 
-// GetOldest returns the oldest PID without removing it
 func (ti *timeIndex) GetOldest() (uint32, time.Time, bool) {
 	ti.mu.Lock()
 	defer ti.mu.Unlock()

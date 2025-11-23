@@ -29,7 +29,6 @@ func LoadExecveObjects(objPath string, ringBufSize int) (*ExecveObjects, error) 
 		return nil, fmt.Errorf("load collection spec: %w", err)
 	}
 
-	// Configure ring buffer size if specified
 	if ringBufSize > 0 {
 		if eventsSpec, ok := spec.Maps["events"]; ok {
 			eventsSpec.MaxEntries = uint32(ringBufSize)

@@ -75,7 +75,6 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 	}
 	defer printer.Close()
 
-	// Load rules
 	loadedRules, err := rules.LoadRules(t.opts.RulesPath)
 	if err != nil {
 		log.Printf("Warning: failed to load rules from %s: %v", t.opts.RulesPath, err)
@@ -84,18 +83,15 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 	} else {
 		log.Printf("Loaded %d detection rules from %s", len(loadedRules), t.opts.RulesPath)
 	}
-
 	ruleEngine := rules.NewEngine(loadedRules)
 
-	// Create process tree
-	processTree := proctree.NewProcessTree(t.opts.ProcessTreeMaxAge, t.opts.ProcessTreeMaxSize)
+	processTree := proctree.NewProcessTree(t.opts.ProcessTreeMaxAge, t.opts.ProcessTreeMaxSize, t.opts.ProcessTreeMaxChainLength)
 
-	// Populate monitored paths from rules into BPF map
-	if err := populateMonitoredPaths(objs.MonitoredPaths, loadedRules); err != nil {
+	if err := populateMonitoredPaths(objs.MonitoredPaths, loadedRules, t.opts.RulesPath); err != nil {
 		return fmt.Errorf("failed to populate monitored paths: %w", err)
 	}
 
-	log.Printf("EulerGuard tracer ready (BPF object: %s, monitoring paths from rules.yaml)", t.opts.BPFPath)
+	log.Printf("EulerGuard tracer ready (BPF object: %s, monitoring paths from %s)", t.opts.BPFPath, t.opts.RulesPath)
 
 	for {
 		record, err := reader.Read()
@@ -109,7 +105,6 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 			return fmt.Errorf("read ringbuf: %w", err)
 		}
 
-		// Process event based on type
 		if len(record.RawSample) < 1 {
 			continue
 		}
@@ -123,7 +118,6 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 	}
 }
 
-// handleExecEvent processes exec events
 func (t *ExecveTracer) handleExecEvent(data []byte, processTree *proctree.ProcessTree,
 	printer *output.Printer, ruleEngine *rules.Engine) {
 
@@ -133,19 +127,13 @@ func (t *ExecveTracer) handleExecEvent(data []byte, processTree *proctree.Proces
 		return
 	}
 
-	// Add to process tree
 	processTree.AddProcess(ev.PID, ev.PPID, ev.CgroupID, utils.ExtractCString(ev.Comm[:]))
-
-	// Print the event and get the processed event
 	processedEvent := printer.Print(ev)
-
-	// Match against rules and print alerts
 	for _, alert := range ruleEngine.Match(processedEvent) {
 		printer.PrintAlert(alert)
 	}
 }
 
-// handleFileOpenEvent processes file open events
 func (t *ExecveTracer) handleFileOpenEvent(data []byte, processTree *proctree.ProcessTree,
 	printer *output.Printer, ruleEngine *rules.Engine) {
 
@@ -155,7 +143,6 @@ func (t *ExecveTracer) handleFileOpenEvent(data []byte, processTree *proctree.Pr
 		return
 	}
 
-	// Check if file access matches any rules
 	filename := utils.ExtractCString(ev.Filename[:])
 	if matched, rule := ruleEngine.MatchFile(filename, ev.PID, ev.CgroupID); matched && rule != nil {
 		chain := processTree.GetAncestors(ev.PID)
@@ -208,7 +195,7 @@ func decodeFileOpenEvent(data []byte) (events.FileOpenEvent, error) {
 }
 
 // populateMonitoredPaths extracts all monitored paths from rules and populates the BPF map
-func populateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule) error {
+func populateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath string) error {
 	if bpfMap == nil {
 		return fmt.Errorf("monitored_paths map is nil")
 	}
@@ -229,11 +216,10 @@ func populateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule) error {
 	}
 
 	if len(pathSet) == 0 {
-		log.Printf("Warning: No file access rules found in rules.yaml")
+		log.Printf("Warning: No file access rules found in %s", rulesPath)
 		return nil
 	}
 
-	// Populate BPF map with paths
 	count := 0
 	value := uint8(1) // Dummy value, we only care about key existence
 
@@ -248,6 +234,6 @@ func populateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule) error {
 		count++
 	}
 
-	log.Printf("Populated BPF map with %d monitored paths from rules.yaml", count)
+	log.Printf("Populated BPF map with %d monitored paths from %s", count, rulesPath)
 	return nil
 }

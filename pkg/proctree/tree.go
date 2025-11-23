@@ -1,7 +1,6 @@
 package proctree
 
 import (
-	"eulerguard/pkg/config"
 	"fmt"
 	"hash/fnv"
 	"log"
@@ -22,32 +21,28 @@ type ProcessInfo struct {
 }
 
 type ProcessTree struct {
-	processes sync.Map
-	timeIndex *timeIndex // Min-heap for efficient eviction
-	maxAge    time.Duration
-	maxSize   int
-	size      atomic.Int32
+	processes      sync.Map
+	timeIndex      *timeIndex
+	maxAge         time.Duration
+	maxSize        int
+	maxChainLength int
+	size           atomic.Int32
 }
 
-func NewProcessTree(maxAge time.Duration, maxSize int) *ProcessTree {
-	if maxSize <= 0 {
-		maxSize = config.DefaultProcessTreeMaxSize
-	}
-
+func NewProcessTree(maxAge time.Duration, maxSize int, maxChainLength int) *ProcessTree {
 	pt := &ProcessTree{
-		timeIndex: newTimeIndex(),
-		maxAge:    maxAge,
-		maxSize:   maxSize,
+		timeIndex:      newTimeIndex(),
+		maxAge:         maxAge,
+		maxSize:        maxSize,
+		maxChainLength: maxChainLength,
 	}
 
-	// Seed from /proc asynchronously - don't block startup
 	go func() {
 		if err := pt.seedFromProc(); err != nil {
 			log.Printf("Warning: failed to seed process tree from /proc: %v", err)
 		}
 	}()
 
-	// Start cleanup goroutine
 	go pt.cleanupLoop()
 
 	return pt
@@ -86,41 +81,33 @@ func (pt *ProcessTree) seedFromProc() error {
 }
 
 func (pt *ProcessTree) readProcInfo(pid uint32) (*ProcessInfo, error) {
-	// Read /proc/[pid]/stat for PPID and comm
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse stat file: pid (comm) state ppid ...
-	// Need to handle comm with spaces and parentheses
+	// pid (comm) state ppid ...
 	str := string(data)
 
-	// Find the last ')' to handle comm with spaces
 	commEnd := strings.LastIndex(str, ")")
 	if commEnd == -1 {
 		return nil, fmt.Errorf("invalid stat format")
 	}
-
 	commStart := strings.Index(str, "(")
 	if commStart == -1 {
 		return nil, fmt.Errorf("invalid stat format")
 	}
-
 	comm := str[commStart+1 : commEnd]
 
-	// Parse fields after comm
 	fields := strings.Fields(str[commEnd+1:])
 	if len(fields) < 2 {
 		return nil, fmt.Errorf("invalid stat format")
 	}
-
 	ppid, err := strconv.ParseUint(fields[1], 10, 32)
 	if err != nil {
 		return nil, err
 	}
 
-	// Read cgroup ID
 	cgroupID := pt.readCgroupID(pid)
 
 	return &ProcessInfo{
@@ -133,18 +120,17 @@ func (pt *ProcessTree) readProcInfo(pid uint32) (*ProcessInfo, error) {
 }
 
 func (pt *ProcessTree) readCgroupID(pid uint32) uint64 {
-	// Read cgroup info from /proc/[pid]/cgroup
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", pid))
 	if err != nil {
 		return 1 // Default to host
 	}
 
-	// Parse cgroup v2 format: 0::/path or cgroup v1 format
 	lines := strings.Split(string(data), "\n")
+
+	// cgroup v2 format: 0::/path
 	for _, line := range lines {
-		if strings.HasPrefix(line, "0::") {
-			// cgroup v2: hash the cgroup path to get a stable ID
-			cgroupPath := strings.TrimPrefix(line, "0::")
+		if after, ok := strings.CutPrefix(line, "0::"); ok {
+			cgroupPath := after
 			if cgroupPath == "/" || cgroupPath == "" {
 				return 1 // Host process
 			}
@@ -162,7 +148,7 @@ func (pt *ProcessTree) readCgroupID(pid uint32) uint64 {
 		}
 	}
 
-	return 1 // Default to host
+	return 1
 }
 
 func hashString(s string) uint64 {
@@ -172,7 +158,6 @@ func hashString(s string) uint64 {
 }
 
 func (pt *ProcessTree) AddProcess(pid, ppid uint32, cgroupID uint64, comm string) {
-	// Check size limit and evict oldest if needed
 	if pt.size.Load() >= int32(pt.maxSize) {
 		pt.evictOldest()
 	}
@@ -185,7 +170,6 @@ func (pt *ProcessTree) AddProcess(pid, ppid uint32, cgroupID uint64, comm string
 		Timestamp: time.Now(),
 	}
 
-	// Check if already exists
 	if _, exists := pt.processes.Load(pid); !exists {
 		pt.size.Add(1)
 	}
@@ -194,15 +178,12 @@ func (pt *ProcessTree) AddProcess(pid, ppid uint32, cgroupID uint64, comm string
 	pt.timeIndex.Add(pid, info.Timestamp)
 }
 
-// evictOldest removes the oldest process - now O(log n) instead of O(n)
 func (pt *ProcessTree) evictOldest() {
-	// Pop oldest from heap
 	oldestPID, ok := pt.timeIndex.PopOldest()
 	if !ok {
 		return
 	}
 
-	// Delete from processes map
 	if _, loaded := pt.processes.LoadAndDelete(oldestPID); loaded {
 		pt.size.Add(-1)
 	}
@@ -217,23 +198,19 @@ func (pt *ProcessTree) GetProcess(pid uint32) (*ProcessInfo, bool) {
 }
 
 func (pt *ProcessTree) GetAncestors(pid uint32) []*ProcessInfo {
-	const maxChainLength = 50
-	chain := make([]*ProcessInfo, 0, 10) // Pre-allocate reasonable capacity
+	chain := make([]*ProcessInfo, 0, pt.maxChainLength)
 	visited := make(map[uint32]bool)
 
-	for currentPID := pid; currentPID != 0 && currentPID != 1 && len(chain) < maxChainLength; {
-		// Prevent infinite loops
+	for currentPID := pid; currentPID != 0 && currentPID != 1 && len(chain) < pt.maxChainLength; {
 		if visited[currentPID] {
 			break
 		}
 		visited[currentPID] = true
 
-		// Get process info - break if not found
 		info, ok := pt.GetProcess(currentPID)
 		if !ok {
 			break
 		}
-
 		chain = append(chain, info)
 
 		// Stop at container boundary (cgroup change)
@@ -241,7 +218,6 @@ func (pt *ProcessTree) GetAncestors(pid uint32) []*ProcessInfo {
 			break
 		}
 
-		// Move to parent
 		currentPID = info.PPID
 	}
 
@@ -257,23 +233,18 @@ func (pt *ProcessTree) cleanupLoop() {
 	}
 }
 
-// cleanup removes processes older than maxAge - more efficient with heap
 func (pt *ProcessTree) cleanup() {
 	now := time.Now()
 	count := 0
 
-	// Keep removing oldest until we find one that's not expired
 	for {
 		pid, timestamp, ok := pt.timeIndex.GetOldest()
 		if !ok {
-			break // No more entries
+			break
 		}
-
 		if now.Sub(timestamp) <= pt.maxAge {
-			break // Oldest entry is still valid, we're done
+			break
 		}
-
-		// Remove expired entry
 		pt.timeIndex.PopOldest()
 		if _, loaded := pt.processes.LoadAndDelete(pid); loaded {
 			pt.size.Add(-1)

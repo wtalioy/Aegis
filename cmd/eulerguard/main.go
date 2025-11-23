@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	opts := config.Parse()
+	opts := config.ParseOptions()
 	tracer := app.NewExecveTracer(opts)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
