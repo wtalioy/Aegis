@@ -249,6 +249,71 @@ func formatFileAlertText(ruleName, severity, description, filename string,
 	return builder.String()
 }
 
+func (p *Printer) PrintConnectAlert(ev *events.ConnectEvent, chain []*proctree.ProcessInfo, rule *rules.Rule) {
+	destAddr := formatAddress(ev)
+
+	if p.jsonLines {
+		data := map[string]any{
+			"type":        "network_connect_alert",
+			"timestamp":   time.Now().UTC().Format(time.RFC3339),
+			"rule_name":   rule.Name,
+			"severity":    rule.Severity,
+			"description": rule.Description,
+			"pid":         ev.PID,
+			"dest_addr":   destAddr,
+			"dest_port":   ev.Port,
+			"family":      ev.Family,
+			"cgroup_id":   ev.CgroupID,
+			"chain":       formatChainJSON(chain),
+		}
+		enc := json.NewEncoder(p.writer)
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(data); err != nil {
+			log.Printf("json encode connect alert failed: %v", err)
+		}
+		return
+	}
+
+	alertText := formatConnectAlertText(rule.Name, rule.Severity, rule.Description,
+		destAddr, ev.PID, ev.CgroupID, chain)
+
+	severityColor := getSeverityColor(rule.Severity)
+	resetColor := "\033[0m"
+	fmt.Fprintf(os.Stdout, "%s%s%s", severityColor, alertText, resetColor)
+
+	p.mu.Lock()
+	fmt.Fprint(p.logWriter, alertText)
+	p.mu.Unlock()
+}
+
+func formatConnectAlertText(ruleName, severity, description, destAddr string,
+	pid uint32, cgroupID uint64, chain []*proctree.ProcessInfo) string {
+
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "[ALERT!] Rule '%s' triggered [Severity: %s]\n", ruleName, severity)
+	fmt.Fprintf(&builder, "  Description: %s\n", description)
+	fmt.Fprintf(&builder, "  Network Connection: %s\n", destAddr)
+	fmt.Fprintf(&builder, "  PID: %d | Cgroup: %d\n", pid, cgroupID)
+
+	if len(chain) > 0 {
+		fmt.Fprintf(&builder, "  Attack Chain: %s\n", formatChain(chain))
+	}
+
+	return builder.String()
+}
+
+func formatAddress(ev *events.ConnectEvent) string {
+	ip := utils.ExtractIP(ev)
+	switch ev.Family {
+	case 10:
+		return fmt.Sprintf("[%s]:%d", ip, ev.Port)
+	case 2:
+		return fmt.Sprintf("%s:%d", ip, ev.Port)
+	default:
+		return fmt.Sprintf("unknown_family_%d:port_%d", ev.Family, ev.Port)
+	}
+}
+
 func formatChain(chain []*proctree.ProcessInfo) string {
 	parts := make([]string, len(chain))
 	for i, info := range reverseChain(chain) {

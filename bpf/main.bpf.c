@@ -1,5 +1,6 @@
 #include "vmlinux.h"
 #include <bpf/bpf_core_read.h>
+#include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
@@ -7,6 +8,7 @@
 #define PATH_MAX_LEN 256
 #define EVENT_TYPE_EXEC 1
 #define EVENT_TYPE_FILE_OPEN 2
+#define EVENT_TYPE_CONNECT 3
 
 struct exec_event {
     u8 type;
@@ -25,12 +27,21 @@ struct file_open_event {
     char filename[PATH_MAX_LEN];
 } __attribute__((packed));
 
+struct connect_event {
+    u8 type;
+    u32 pid;
+    u64 cgroup_id;
+    u16 family;
+    u16 port;
+    u32 addr_v4;
+    u8 addr_v6[16];
+} __attribute__((packed));
+
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 256 * 1024);
 } events SEC(".maps");
 
-// Map of monitored path prefixes (populated from rules.yaml)
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(max_entries, 1024);
@@ -38,7 +49,6 @@ struct {
     __type(value, u8);
 } monitored_paths SEC(".maps");
 
-// Per-CPU buffer for path processing (avoids stack overflow)
 struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
     __uint(max_entries, 1);
@@ -73,7 +83,6 @@ int handle_exec(struct trace_event_raw_sched_process_exec* ctx)
     event->cgroup_id = bpf_get_current_cgroup_id();
     bpf_get_current_comm(&event->comm, sizeof(event->comm));
 
-    // Get parent process name
     parent = BPF_CORE_READ(task, real_parent);
     if (parent) {
         BPF_CORE_READ_STR_INTO(&event->pcomm, parent, comm);
@@ -85,14 +94,9 @@ int handle_exec(struct trace_event_raw_sched_process_exec* ctx)
     return 0;
 }
 
-// Helper to check if path matches any monitored prefix from rules.yaml
 static __always_inline bool is_monitored_path(const char* userspace_path, char* path_buf)
 {
-    // Zero the buffer first (required for hash map key comparison)
-    // BPF hash maps compare the full 256 bytes, not just up to null terminator
     __builtin_memset(path_buf, 0, PATH_MAX_LEN);
-
-    // Read the full path from userspace into our buffer
     long ret = bpf_probe_read_user_str(path_buf, PATH_MAX_LEN, userspace_path);
     if (ret <= 0)
         return false;
@@ -107,13 +111,10 @@ static __always_inline bool is_monitored_path(const char* userspace_path, char* 
 #pragma unroll
     for (int i = 1; i < PATH_MAX_LEN - 1; i++) {
         if (path_buf[i] == '/') {
-            // Temporarily null-terminate at next position to create prefix
             char saved = path_buf[i + 1];
             path_buf[i + 1] = '\0';
-
             val = bpf_map_lookup_elem(&monitored_paths, path_buf);
-            path_buf[i + 1] = saved; // Restore
-
+            path_buf[i + 1] = saved;
             if (val)
                 return true;
         }
@@ -124,7 +125,6 @@ static __always_inline bool is_monitored_path(const char* userspace_path, char* 
     return false;
 }
 
-// Tracepoint for sys_enter_openat
 SEC("tp/syscalls/sys_enter_openat")
 int tracepoint_openat(struct trace_event_raw_sys_enter* ctx)
 {
@@ -132,32 +132,83 @@ int tracepoint_openat(struct trace_event_raw_sys_enter* ctx)
     u64 pid_tgid = bpf_get_current_pid_tgid();
     u32 pid = pid_tgid >> 32;
 
-    // Get filename from syscall args (args[1] for openat)
     const char* filename = (const char*)ctx->args[1];
 
-    // Get per-CPU path buffer
     u32 key = 0;
     char* path_buf = bpf_map_lookup_elem(&path_buffer, &key);
     if (!path_buf)
         return 0;
-
-    // Check if path matches any monitored paths from rules.yaml
     if (!is_monitored_path(filename, path_buf))
         return 0;
 
-    // Allocate event from ring buffer
     event = bpf_ringbuf_reserve(&events, sizeof(*event), 0);
     if (!event)
         return 0;
 
-    // Fill event fields
     event->type = EVENT_TYPE_FILE_OPEN;
     event->pid = pid;
     event->cgroup_id = bpf_get_current_cgroup_id();
     event->flags = (u32)ctx->args[2];
 
-    // Copy already-read path from buffer to event
     __builtin_memcpy(event->filename, path_buf, PATH_MAX_LEN);
+
+    bpf_ringbuf_submit(event, 0);
+    return 0;
+}
+
+SEC("tp/syscalls/sys_enter_connect")
+int tracepoint_connect(struct trace_event_raw_sys_enter* ctx)
+{
+    struct connect_event* event;
+    u64 pid_tgid = bpf_get_current_pid_tgid();
+    u32 pid = pid_tgid >> 32;
+
+    struct sockaddr* addr = (struct sockaddr*)ctx->args[1];
+    if (!addr)
+        return 0;
+
+    event = bpf_ringbuf_reserve(&events, sizeof(*event), 0);
+    if (!event)
+        return 0;
+
+    event->type = EVENT_TYPE_CONNECT;
+    event->pid = pid;
+    event->cgroup_id = bpf_get_current_cgroup_id();
+    event->family = 0;
+    event->port = 0;
+    event->addr_v4 = 0;
+    __builtin_memset(event->addr_v6, 0, 16);
+
+    u16 sa_family = 0;
+    long ret = bpf_probe_read_user(&sa_family, sizeof(sa_family), &addr->sa_family);
+    if (ret < 0) {
+        bpf_ringbuf_discard(event, 0);
+        return 0;
+    }
+    event->family = sa_family;
+
+    // Handle IPv4 (AF_INET = 2)
+    if (sa_family == 2) {
+        struct sockaddr_in* addr_in = (struct sockaddr_in*)addr;
+        u16 port_net = 0;
+        u32 addr_net = 0;
+
+        bpf_probe_read_user(&port_net, sizeof(port_net), &addr_in->sin_port);
+        bpf_probe_read_user(&addr_net, sizeof(addr_net), &addr_in->sin_addr.s_addr);
+
+        event->port = __bpf_ntohs(port_net);
+        event->addr_v4 = addr_net;
+    }
+    // Handle IPv6 (AF_INET6 = 10)
+    else if (sa_family == 10) {
+        struct sockaddr_in6* addr_in6 = (struct sockaddr_in6*)addr;
+        u16 port_net = 0;
+
+        bpf_probe_read_user(&port_net, sizeof(port_net), &addr_in6->sin6_port);
+        bpf_probe_read_user(event->addr_v6, 16, &addr_in6->sin6_addr);
+
+        event->port = __bpf_ntohs(port_net);
+    }
 
     bpf_ringbuf_submit(event, 0);
     return 0;

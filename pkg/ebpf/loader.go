@@ -9,10 +9,11 @@ import (
 )
 
 type ExecveObjects struct {
-	HandleExec       *ebpf.Program `ebpf:"handle_exec"`
-	TracepointOpenat *ebpf.Program `ebpf:"tracepoint_openat"`
-	Events           *ebpf.Map     `ebpf:"events"`
-	MonitoredPaths   *ebpf.Map     `ebpf:"monitored_paths"`
+	HandleExec        *ebpf.Program `ebpf:"handle_exec"`
+	TracepointOpenat  *ebpf.Program `ebpf:"tracepoint_openat"`
+	TracepointConnect *ebpf.Program `ebpf:"tracepoint_connect"`
+	Events            *ebpf.Map     `ebpf:"events"`
+	MonitoredPaths    *ebpf.Map     `ebpf:"monitored_paths"`
 }
 
 func LoadExecveObjects(objPath string, ringBufSize int) (*ExecveObjects, error) {
@@ -57,6 +58,11 @@ func (o *ExecveObjects) Close() error {
 	if o.TracepointOpenat != nil {
 		if err := o.TracepointOpenat.Close(); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("close tracepoint_openat: %w", err)
+		}
+	}
+	if o.TracepointConnect != nil {
+		if err := o.TracepointConnect.Close(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("close tracepoint_connect: %w", err)
 		}
 	}
 	if o.Events != nil {

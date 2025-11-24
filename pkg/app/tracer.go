@@ -49,12 +49,17 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 	}
 	defer tp.Close()
 
-	// Attach tracepoint for openat
 	tpOpenat, err := link.Tracepoint("syscalls", "sys_enter_openat", objs.TracepointOpenat, nil)
 	if err != nil {
 		return fmt.Errorf("attach tracepoint openat: %w", err)
 	}
 	defer tpOpenat.Close()
+
+	tpConnect, err := link.Tracepoint("syscalls", "sys_enter_connect", objs.TracepointConnect, nil)
+	if err != nil {
+		return fmt.Errorf("attach tracepoint connect: %w", err)
+	}
+	defer tpConnect.Close()
 
 	reader, err := ringbuf.NewReader(objs.Events)
 	if err != nil {
@@ -114,6 +119,8 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 			t.handleExecEvent(record.RawSample, processTree, printer, ruleEngine)
 		case events.EventTypeFileOpen:
 			t.handleFileOpenEvent(record.RawSample, processTree, printer, ruleEngine)
+		case events.EventTypeConnect:
+			t.handleConnectEvent(record.RawSample, processTree, printer, ruleEngine)
 		}
 	}
 }
@@ -150,10 +157,26 @@ func (t *ExecveTracer) handleFileOpenEvent(data []byte, processTree *proctree.Pr
 	}
 }
 
+func (t *ExecveTracer) handleConnectEvent(data []byte, processTree *proctree.ProcessTree,
+	printer *output.Printer, ruleEngine *rules.Engine) {
+
+	ev, err := decodeConnectEvent(data)
+	if err != nil {
+		log.Printf("Error decoding connect event: %v", err)
+		return
+	}
+
+	if matched, rule := ruleEngine.MatchConnect(&ev); matched && rule != nil {
+		chain := processTree.GetAncestors(ev.PID)
+		printer.PrintConnectAlert(&ev, chain, rule)
+	}
+}
+
 const (
 	// Event sizes: type(1) + fields
 	minExecEventSize     = 1 + 4 + 4 + 8 + events.TaskCommLen + events.TaskCommLen // 49 bytes
 	minFileOpenEventSize = 1 + 4 + 8 + 4 + events.PathMaxLen                       // 273 bytes
+	minConnectEventSize  = 1 + 4 + 8 + 2 + 2 + 4 + 16                              // 37 bytes
 )
 
 func decodeExecEvent(data []byte) (events.ExecEvent, error) {
@@ -194,22 +217,39 @@ func decodeFileOpenEvent(data []byte) (events.FileOpenEvent, error) {
 	return ev, nil
 }
 
-// populateMonitoredPaths extracts all monitored paths from rules and populates the BPF map
+func decodeConnectEvent(data []byte) (events.ConnectEvent, error) {
+	if len(data) < minConnectEventSize {
+		return events.ConnectEvent{}, fmt.Errorf("connect event too small: %d bytes", len(data))
+	}
+
+	var ev events.ConnectEvent
+	offset := 1 // Skip type byte at index 0
+	ev.PID = binary.LittleEndian.Uint32(data[offset : offset+4])
+	offset += 4
+	ev.CgroupID = binary.LittleEndian.Uint64(data[offset : offset+8])
+	offset += 8
+	ev.Family = binary.LittleEndian.Uint16(data[offset : offset+2])
+	offset += 2
+	ev.Port = binary.LittleEndian.Uint16(data[offset : offset+2])
+	offset += 2
+	ev.AddrV4 = binary.LittleEndian.Uint32(data[offset : offset+4])
+	offset += 4
+	copy(ev.AddrV6[:], data[offset:offset+16])
+
+	return ev, nil
+}
+
 func populateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath string) error {
 	if bpfMap == nil {
 		return fmt.Errorf("monitored_paths map is nil")
 	}
 
-	// Extract unique paths from rules
 	pathSet := make(map[string]struct{})
 
 	for _, rule := range ruleList {
-		// Add exact filenames
 		if rule.Match.Filename != "" {
 			pathSet[rule.Match.Filename] = struct{}{}
 		}
-
-		// Add file path prefixes (directory paths)
 		if rule.Match.FilePath != "" {
 			pathSet[rule.Match.FilePath] = struct{}{}
 		}
@@ -224,10 +264,8 @@ func populateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath 
 	value := uint8(1) // Dummy value, we only care about key existence
 
 	for path := range pathSet {
-		// Convert path to fixed-size byte array (required by BPF map)
 		key := make([]byte, events.PathMaxLen)
 		copy(key, []byte(path))
-
 		if err := bpfMap.Put(key, value); err != nil {
 			return fmt.Errorf("failed to add path %q to BPF map: %w", path, err)
 		}

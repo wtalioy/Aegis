@@ -54,12 +54,12 @@ rules:
   # parent process or container context if needed for your environment.
 
   # File Access Rules
-  - name: "Access to /etc/shadow"
-    description: "Attempt to access /etc/shadow file, which contains password hashes"
-    severity: "high"
-    match:
-      filename: "/etc/shadow"
-    action: "alert"
+  # - name: "Access to /etc/shadow"
+  #   description: "Attempt to access /etc/shadow file, which contains password hashes"
+  #   severity: "high"
+  #   match:
+  #     filename: "/etc/shadow"
+  #   action: "alert"
 
   - name: "Access to /etc/passwd"
     description: "Access to /etc/passwd file, which contains user account information"
@@ -68,31 +68,54 @@ rules:
       filename: "/etc/passwd"
     action: "alert"
 
-  - name: "Access to /etc/sudoers"
-    description: "Access to /etc/sudoers file, which controls sudo privileges"
+  # - name: "Access to /etc/sudoers"
+  #   description: "Access to /etc/sudoers file, which controls sudo privileges"
+  #   severity: "high"
+  #   match:
+  #     filename: "/etc/sudoers"
+  #   action: "alert"
+
+  # - name: "Access to SSH Keys"
+  #   description: "Access to SSH private keys in /root/.ssh/"
+  #   severity: "high"
+  #   match:
+  #     file_path: "/root/.ssh/"
+  #   action: "alert"
+
+  # - name: "Access to User Home Directories"
+  #   description: "Access to files in user home directories"
+  #   severity: "info"
+  #   match:
+  #     file_path: "/home/"
+  #   action: "alert"
+
+  # - name: "Access to /etc/hosts"
+  #   description: "Modification of /etc/hosts file, which may indicate DNS hijacking"
+  #   severity: "warning"
+  #   match:
+  #     filename: "/etc/hosts"
+  #   action: "alert"
+
+  # Network Connection Rules
+  - name: "Suspicious Outbound Connection"
+    description: "Network connection to potentially suspicious port (e.g., reverse shell ports)"
     severity: "high"
     match:
-      filename: "/etc/sudoers"
+      dest_port: 4444
     action: "alert"
 
-  - name: "Access to SSH Keys"
-    description: "Access to SSH private keys in /root/.ssh/"
-    severity: "high"
-    match:
-      file_path: "/root/.ssh/"
-    action: "alert"
-
-  - name: "Access to User Home Directories"
-    description: "Access to files in user home directories"
-    severity: "info"
-    match:
-      file_path: "/home/"
-    action: "alert"
-
-  - name: "Access to /etc/hosts"
-    description: "Modification of /etc/hosts file, which may indicate DNS hijacking"
+  - name: "Connection to Common C2 Port"
+    description: "Connection to port 8080, commonly used for command and control"
     severity: "warning"
     match:
-      filename: "/etc/hosts"
+      dest_port: 8080
+    action: "alert"
+
+  - name: "HTTPS Connection from Container"
+    description: "Container making HTTPS connection (port 443)"
+    severity: "info"
+    match:
+      dest_port: 443
+      in_container: true
     action: "alert"
 

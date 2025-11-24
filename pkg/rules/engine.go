@@ -2,6 +2,8 @@ package rules
 
 import (
 	"eulerguard/pkg/events"
+	"eulerguard/pkg/utils"
+	"net"
 	"strings"
 )
 
@@ -168,4 +170,47 @@ func (e *Engine) matchFileRule(rule Rule, filename string, pid uint32, cgroupID 
 		(match.FilePath == "" || strings.HasPrefix(filename, match.FilePath)) &&
 		(!match.InContainer || cgroupID != 1) &&
 		(match.PID == 0 || pid == match.PID)
+}
+
+func (e *Engine) MatchConnect(event *events.ConnectEvent) (bool, *Rule) {
+	for i := range e.rules {
+		rule := &e.rules[i]
+		if e.matchConnectRule(*rule, event) {
+			return true, rule
+		}
+	}
+	return false, nil
+}
+
+func (e *Engine) matchConnectRule(rule Rule, event *events.ConnectEvent) bool {
+	match := rule.Match
+
+	if match.DestPort == 0 && match.DestIP == "" {
+		return false
+	}
+	if match.DestPort != 0 && event.Port != match.DestPort {
+		return false
+	}
+	if match.DestIP != "" {
+		eventIP := utils.ExtractIP(event)
+		if eventIP == "" || !matchIP(eventIP, match.DestIP) {
+			return false
+		}
+	}
+	if match.InContainer && event.CgroupID == 1 {
+		return false
+	}
+	if match.PID != 0 && event.PID != match.PID {
+		return false
+	}
+	return true
+}
+
+func matchIP(eventIP, ruleIP string) bool {
+	_, ipNet, err := net.ParseCIDR(ruleIP)
+	if err == nil {
+		ip := net.ParseIP(eventIP)
+		return ip != nil && ipNet.Contains(ip)
+	}
+	return eventIP == ruleIP
 }

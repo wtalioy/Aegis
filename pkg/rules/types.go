@@ -30,6 +30,8 @@ type MatchCondition struct {
 	InContainer     bool      `yaml:"in_container,omitempty"`
 	Filename        string    `yaml:"filename,omitempty"`
 	FilePath        string    `yaml:"file_path,omitempty"`
+	DestPort        uint16    `yaml:"dest_port,omitempty"`
+	DestIP          string    `yaml:"dest_ip,omitempty"`
 }
 
 type RuleSet struct {
