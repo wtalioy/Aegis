@@ -1,3 +1,5 @@
+//go:build !web && !wails
+
 package main
 
 import (
@@ -7,18 +9,15 @@ import (
 	"os/signal"
 	"syscall"
 
-	"eulerguard/pkg/app"
+	"eulerguard/pkg/cli"
 	"eulerguard/pkg/config"
 )
 
 func main() {
-	opts := config.ParseOptions()
-	tracer := app.NewExecveTracer(opts)
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := tracer.Run(ctx); err != nil {
+	if err := cli.RunCLI(config.ParseOptions(), ctx); err != nil {
 		log.Fatalf("eulerguard: %v", err)
 	}
 }

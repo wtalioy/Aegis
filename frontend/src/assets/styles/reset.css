@@ -1,0 +1,106 @@
+/* CSS Reset & Base Styles */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-ui);
+  background-color: var(--bg-void);
+  color: var(--text-primary);
+  line-height: 1.5;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: var(--accent-primary);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--accent-primary-hover);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent-primary);
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+/* Utility Classes */
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.text-primary {
+  color: var(--text-primary);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.text-muted {
+  color: var(--text-muted);
+}
+
+.text-safe {
+  color: var(--status-safe);
+}
+
+.text-warning {
+  color: var(--status-warning);
+}
+
+.text-critical {
+  color: var(--status-critical);
+}
+
+.text-info {
+  color: var(--status-info);
+}
+
