@@ -169,13 +169,19 @@ func (p *Profiler) SaveYAML(path string) error {
 		Rules: ruleList,
 	}
 
-	data, err := yaml.Marshal(ruleSet)
+	file, err := os.Create(path)
 	if err != nil {
-		return fmt.Errorf("failed to marshal rules to YAML: %w", err)
+		return fmt.Errorf("failed to create rules file: %w", err)
 	}
+	defer file.Close()
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return fmt.Errorf("failed to write rules file: %w", err)
+	encoder := yaml.NewEncoder(file)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(ruleSet); err != nil {
+		return fmt.Errorf("failed to encode rules to YAML: %w", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return fmt.Errorf("failed to close encoder: %w", err)
 	}
 
 	return nil
