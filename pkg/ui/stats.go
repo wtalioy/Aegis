@@ -22,9 +22,10 @@ type Stats struct {
 	rateFile       atomic.Int64
 	rateConnect    atomic.Int64
 
-	alerts    []FrontendAlert
-	alertsMu  sync.RWMutex
-	maxAlerts int
+	alerts      []FrontendAlert
+	alertsMu    sync.RWMutex
+	maxAlerts   int
+	totalAlerts atomic.Int64
 
 	containers   map[string]struct{}
 	containersMu sync.RWMutex
@@ -85,6 +86,7 @@ func (s *Stats) RecordFile()    { s.fileCount.Add(1); s.lastSecFile.Add(1) }
 func (s *Stats) RecordConnect() { s.connectCount.Add(1); s.lastSecConnect.Add(1) }
 
 func (s *Stats) AddAlert(alert FrontendAlert) {
+	s.totalAlerts.Add(1)
 	s.alertsMu.Lock()
 	if len(s.alerts) >= s.maxAlerts {
 		s.alerts = s.alerts[1:]
@@ -105,6 +107,10 @@ func (s *Stats) AlertCount() int {
 	s.alertsMu.RLock()
 	defer s.alertsMu.RUnlock()
 	return len(s.alerts)
+}
+
+func (s *Stats) TotalAlertCount() int64 {
+	return s.totalAlerts.Load()
 }
 
 func (s *Stats) Alerts() []FrontendAlert {

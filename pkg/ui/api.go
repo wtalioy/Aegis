@@ -22,7 +22,7 @@ func (a *App) GetSystemStats() SystemStatsDTO {
 		ProcessCount:   processCount,
 		ContainerCount: a.stats.ContainerCount(),
 		EventsPerSec:   float64(exec + file + net),
-		AlertCount:     a.stats.AlertCount(),
+		AlertCount:     int(a.stats.TotalAlertCount()),
 		ProbeStatus:    "active",
 	}
 }
