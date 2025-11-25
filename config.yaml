@@ -32,3 +32,18 @@ process_tree_max_chain_length: 50
 # Log buffer size in bytes (default: 65536 = 64KB)
 # Larger buffers reduce I/O but use more memory
 log_buffer_size: 65536
+
+# ============================================
+# Learning Mode Configuration
+# ============================================
+
+# Enable learning mode to auto-generate whitelist rules (default: false)
+# When enabled, EulerGuard will observe behavior and generate rules
+learn_mode: false
+
+# Duration for learning mode (default: 5m)
+# Format: 30s, 5m, 1h, etc.
+learn_duration: 5m
+
+# Output path for generated whitelist rules (default: whitelist_rules.yaml)
+learn_output_path: ./whitelist_rules.yaml

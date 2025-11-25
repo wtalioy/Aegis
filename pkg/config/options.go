@@ -15,6 +15,8 @@ const (
 	DefaultProcessTreeMaxChainLength = 50
 	DefaultLogBufferSize             = 64 * 1024  // 64KB
 	DefaultRingBufferSize            = 256 * 1024 // 256KB
+	DefaultLearnDuration             = 5 * time.Minute
+	DefaultLearnOutputPath           = "whitelist_rules.yaml"
 )
 
 type Options struct {
@@ -27,6 +29,11 @@ type Options struct {
 	ProcessTreeMaxSize        int           `yaml:"process_tree_max_size"`
 	ProcessTreeMaxChainLength int           `yaml:"process_tree_max_chain_length"`
 	LogBufferSize             int           `yaml:"log_buffer_size"`
+
+	// Learn mode options
+	LearnMode       bool          `yaml:"learn_mode"`
+	LearnDuration   time.Duration `yaml:"learn_duration"`
+	LearnOutputPath string        `yaml:"learn_output_path"`
 }
 
 func ParseOptions() Options {
@@ -46,6 +53,9 @@ func ParseOptions() Options {
 		ProcessTreeMaxChainLength: DefaultProcessTreeMaxChainLength,
 		LogBufferSize:             DefaultLogBufferSize,
 		RingBufferSize:            DefaultRingBufferSize,
+		LearnMode:                 false,
+		LearnDuration:             DefaultLearnDuration,
+		LearnOutputPath:           filepath.Join(cwd, DefaultLearnOutputPath),
 	}
 
 	data, err := os.ReadFile(configPath)
@@ -91,6 +101,19 @@ func ParseOptions() Options {
 		if d, err := time.ParseDuration(v); err == nil {
 			opts.ProcessTreeMaxAge = d
 		}
+	}
+
+	// Learn mode options
+	if v, ok := raw["learn_mode"].(bool); ok {
+		opts.LearnMode = v
+	}
+	if v, ok := raw["learn_duration"].(string); ok && v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			opts.LearnDuration = d
+		}
+	}
+	if v, ok := raw["learn_output_path"].(string); ok && v != "" {
+		opts.LearnOutputPath = v
 	}
 
 	return opts

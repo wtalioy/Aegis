@@ -1,0 +1,305 @@
+rules:
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow rg from node
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: rg
+        process_name_type: exact
+        parent_name: node
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow ls from sh
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: ls
+        process_name_type: exact
+        parent_name: sh
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sh from node
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sh
+        process_name_type: exact
+        parent_name: node
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow cpuUsage.sh from sh
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: cpuUsage.sh
+        process_name_type: exact
+        parent_name: sh
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow access to /etc/passwd
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        in_container: true
+        filename: /etc/passwd
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow git from node
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: git
+        process_name_type: exact
+        parent_name: node
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow which from sh
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: which
+        process_name_type: exact
+        parent_name: sh
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow ps from sh
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: ps
+        process_name_type: exact
+        parent_name: sh
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow connection to port 443
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        in_container: true
+        dest_port: 443
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sleep from cpuUsage.sh
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: cpuUsage.sh
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow connection to port 53
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        in_container: true
+        dest_port: 53
+      action: allow
+    - name: Allow cat from cpuUsage.sh
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: cat
+        process_name_type: exact
+        parent_name: cpuUsage.sh
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow grep from sh
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: grep
+        process_name_type: exact
+        parent_name: sh
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow connection to port 0
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        in_container: true
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow connection to port 41161
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        in_container: true
+        dest_port: 41161
+      action: allow
+    - name: Allow echo from node
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: echo
+        process_name_type: exact
+        parent_name: node
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sleep from bash
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sleep
+        process_name_type: exact
+        parent_name: bash
+        parent_name_type: exact
+        in_container: true
+      action: allow
+    - name: Allow sed from cpuUsage.sh
+      description: Auto-generated from learning mode
+      severity: info
+      match:
+        process_name: sed
+        process_name_type: exact
+        parent_name: cpuUsage.sh
+        parent_name_type: exact
+        in_container: true
+      action: allow

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
@@ -13,9 +12,11 @@ import (
 	"eulerguard/pkg/config"
 	"eulerguard/pkg/ebpf"
 	"eulerguard/pkg/events"
+	"eulerguard/pkg/handlers"
 	"eulerguard/pkg/metrics"
 	"eulerguard/pkg/output"
 	"eulerguard/pkg/proctree"
+	"eulerguard/pkg/profiler"
 	"eulerguard/pkg/rules"
 	"eulerguard/pkg/utils"
 
@@ -24,17 +25,40 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 )
 
-type ExecveTracer struct {
-	opts config.Options
+type Tracer struct {
+	opts        config.Options
+	handlers    *events.HandlerChain
+	profiler    *profiler.Profiler
+	processTree *proctree.ProcessTree
 }
 
-func NewExecveTracer(opts config.Options) *ExecveTracer {
-	return &ExecveTracer{opts: opts}
+func NewTracer(opts config.Options) *Tracer {
+	return &Tracer{
+		opts:     opts,
+		handlers: events.NewHandlerChain(),
+	}
 }
 
-func (t *ExecveTracer) Run(ctx context.Context) error {
+func NewExecveTracer(opts config.Options) *Tracer {
+	return NewTracer(opts)
+}
+
+func (t *Tracer) Run(ctx context.Context) error {
 	if os.Geteuid() != 0 {
 		return fmt.Errorf("must run as root (current euid=%d)", os.Geteuid())
+	}
+
+	t.processTree = proctree.NewProcessTree(
+		t.opts.ProcessTreeMaxAge,
+		t.opts.ProcessTreeMaxSize,
+		t.opts.ProcessTreeMaxChainLength,
+	)
+
+	if t.opts.LearnMode {
+		t.profiler = profiler.NewProfiler()
+		t.handlers.Add(t.profiler)
+		log.Printf("Learning mode enabled for %v, output will be written to %s",
+			t.opts.LearnDuration, t.opts.LearnOutputPath)
 	}
 
 	objs, err := ebpf.LoadExecveObjects(t.opts.BPFPath, t.opts.RingBufferSize)
@@ -43,23 +67,11 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 	}
 	defer objs.Close()
 
-	tp, err := link.Tracepoint("sched", "sched_process_exec", objs.HandleExec, nil)
+	links, err := t.attachTracepoints(objs)
 	if err != nil {
-		return fmt.Errorf("attach tracepoint: %w", err)
+		return err
 	}
-	defer tp.Close()
-
-	tpOpenat, err := link.Tracepoint("syscalls", "sys_enter_openat", objs.TracepointOpenat, nil)
-	if err != nil {
-		return fmt.Errorf("attach tracepoint openat: %w", err)
-	}
-	defer tpOpenat.Close()
-
-	tpConnect, err := link.Tracepoint("syscalls", "sys_enter_connect", objs.TracepointConnect, nil)
-	if err != nil {
-		return fmt.Errorf("attach tracepoint connect: %w", err)
-	}
-	defer tpConnect.Close()
+	defer closeLinks(links)
 
 	reader, err := ringbuf.NewReader(objs.Events)
 	if err != nil {
@@ -67,19 +79,93 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 	}
 	defer reader.Close()
 
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	if t.opts.LearnMode {
+		go t.runLearnModeTimer(runCtx, cancel)
+	}
+
 	go func() {
-		<-ctx.Done()
+		<-runCtx.Done()
 		_ = reader.Close()
 	}()
 
 	meter := metrics.NewRateMeter(2 * time.Second)
-
 	printer, err := output.NewPrinter(t.opts.JSONLines, meter, t.opts.LogFile, t.opts.LogBufferSize)
 	if err != nil {
 		return fmt.Errorf("failed to create printer: %w", err)
 	}
 	defer printer.Close()
 
+	loadedRules, ruleEngine := t.loadRules()
+	if err := populateMonitoredPaths(objs.MonitoredPaths, loadedRules, t.opts.RulesPath); err != nil {
+		return fmt.Errorf("failed to populate monitored paths: %w", err)
+	}
+
+	alertHandler := handlers.NewAlertHandler(t.processTree, printer, ruleEngine)
+	t.handlers.Add(alertHandler)
+
+	t.logStartup()
+
+	return t.eventLoop(reader)
+}
+
+func (t *Tracer) attachTracepoints(objs *ebpf.ExecveObjects) ([]link.Link, error) {
+	var links []link.Link
+
+	tp, err := link.Tracepoint("sched", "sched_process_exec", objs.HandleExec, nil)
+	if err != nil {
+		return nil, fmt.Errorf("attach tracepoint exec: %w", err)
+	}
+	links = append(links, tp)
+
+	tpOpenat, err := link.Tracepoint("syscalls", "sys_enter_openat", objs.TracepointOpenat, nil)
+	if err != nil {
+		closeLinks(links)
+		return nil, fmt.Errorf("attach tracepoint openat: %w", err)
+	}
+	links = append(links, tpOpenat)
+
+	tpConnect, err := link.Tracepoint("syscalls", "sys_enter_connect", objs.TracepointConnect, nil)
+	if err != nil {
+		closeLinks(links)
+		return nil, fmt.Errorf("attach tracepoint connect: %w", err)
+	}
+	links = append(links, tpConnect)
+
+	return links, nil
+}
+
+// closeLinks closes all tracepoint links.
+func closeLinks(links []link.Link) {
+	for _, l := range links {
+		_ = l.Close()
+	}
+}
+
+func (t *Tracer) runLearnModeTimer(ctx context.Context, cancel context.CancelFunc) {
+	timer := time.NewTimer(t.opts.LearnDuration)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		log.Printf("Learning period complete. Collected %d unique behavior profiles.",
+			t.profiler.Count())
+		t.profiler.Stop()
+
+		if err := t.profiler.SaveYAML(t.opts.LearnOutputPath); err != nil {
+			log.Printf("Error saving whitelist rules: %v", err)
+		} else {
+			log.Printf("Whitelist rules saved to %s", t.opts.LearnOutputPath)
+		}
+		cancel()
+	case <-ctx.Done():
+		return
+	}
+}
+
+func (t *Tracer) loadRules() ([]rules.Rule, *rules.Engine) {
 	loadedRules, err := rules.LoadRules(t.opts.RulesPath)
 	if err != nil {
 		log.Printf("Warning: failed to load rules from %s: %v", t.opts.RulesPath, err)
@@ -88,16 +174,20 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 	} else {
 		log.Printf("Loaded %d detection rules from %s", len(loadedRules), t.opts.RulesPath)
 	}
-	ruleEngine := rules.NewEngine(loadedRules)
+	return loadedRules, rules.NewEngine(loadedRules)
+}
 
-	processTree := proctree.NewProcessTree(t.opts.ProcessTreeMaxAge, t.opts.ProcessTreeMaxSize, t.opts.ProcessTreeMaxChainLength)
-
-	if err := populateMonitoredPaths(objs.MonitoredPaths, loadedRules, t.opts.RulesPath); err != nil {
-		return fmt.Errorf("failed to populate monitored paths: %w", err)
+func (t *Tracer) logStartup() {
+	if t.opts.LearnMode {
+		log.Printf("EulerGuard learning mode started (BPF object: %s)", t.opts.BPFPath)
+	} else {
+		log.Printf("EulerGuard tracer ready (BPF object: %s, monitoring paths from %s)",
+			t.opts.BPFPath, t.opts.RulesPath)
 	}
+}
 
-	log.Printf("EulerGuard tracer ready (BPF object: %s, monitoring paths from %s)", t.opts.BPFPath, t.opts.RulesPath)
-
+// read events from ring buffer and dispatch them to handlers.
+func (t *Tracer) eventLoop(reader *ringbuf.Reader) error {
 	for {
 		record, err := reader.Read()
 		if errors.Is(err, ringbuf.ErrClosed) {
@@ -114,131 +204,43 @@ func (t *ExecveTracer) Run(ctx context.Context) error {
 			continue
 		}
 
-		switch events.EventType(record.RawSample[0]) {
-		case events.EventTypeExec:
-			t.handleExecEvent(record.RawSample, processTree, printer, ruleEngine)
-		case events.EventTypeFileOpen:
-			t.handleFileOpenEvent(record.RawSample, processTree, printer, ruleEngine)
-		case events.EventTypeConnect:
-			t.handleConnectEvent(record.RawSample, processTree, printer, ruleEngine)
+		t.dispatchEvent(record.RawSample)
+	}
+}
+
+// decode and dispatch an event to all handlers.
+func (t *Tracer) dispatchEvent(data []byte) {
+	switch events.EventType(data[0]) {
+	case events.EventTypeExec:
+		ev, err := events.DecodeExecEvent(data)
+		if err != nil {
+			log.Printf("Error decoding exec event: %v", err)
+			return
 		}
+		// Update process tree before dispatching
+		t.processTree.AddProcess(ev.PID, ev.PPID, ev.CgroupID, utils.ExtractCString(ev.Comm[:]))
+		t.handlers.HandleExec(ev)
+
+	case events.EventTypeFileOpen:
+		ev, err := events.DecodeFileOpenEvent(data)
+		if err != nil {
+			log.Printf("Error decoding file open event: %v", err)
+			return
+		}
+		filename := utils.ExtractCString(ev.Filename[:])
+		t.handlers.HandleFileOpen(ev, filename)
+
+	case events.EventTypeConnect:
+		ev, err := events.DecodeConnectEvent(data)
+		if err != nil {
+			log.Printf("Error decoding connect event: %v", err)
+			return
+		}
+		t.handlers.HandleConnect(ev)
 	}
 }
 
-func (t *ExecveTracer) handleExecEvent(data []byte, processTree *proctree.ProcessTree,
-	printer *output.Printer, ruleEngine *rules.Engine) {
-
-	ev, err := decodeExecEvent(data)
-	if err != nil {
-		log.Printf("Error decoding exec event: %v", err)
-		return
-	}
-
-	processTree.AddProcess(ev.PID, ev.PPID, ev.CgroupID, utils.ExtractCString(ev.Comm[:]))
-	processedEvent := printer.Print(ev)
-	for _, alert := range ruleEngine.Match(processedEvent) {
-		printer.PrintAlert(alert)
-	}
-}
-
-func (t *ExecveTracer) handleFileOpenEvent(data []byte, processTree *proctree.ProcessTree,
-	printer *output.Printer, ruleEngine *rules.Engine) {
-
-	ev, err := decodeFileOpenEvent(data)
-	if err != nil {
-		log.Printf("Error decoding file open event: %v", err)
-		return
-	}
-
-	filename := utils.ExtractCString(ev.Filename[:])
-	if matched, rule := ruleEngine.MatchFile(filename, ev.PID, ev.CgroupID); matched && rule != nil {
-		chain := processTree.GetAncestors(ev.PID)
-		printer.PrintFileOpenAlert(&ev, chain, rule, filename)
-	}
-}
-
-func (t *ExecveTracer) handleConnectEvent(data []byte, processTree *proctree.ProcessTree,
-	printer *output.Printer, ruleEngine *rules.Engine) {
-
-	ev, err := decodeConnectEvent(data)
-	if err != nil {
-		log.Printf("Error decoding connect event: %v", err)
-		return
-	}
-
-	if matched, rule := ruleEngine.MatchConnect(&ev); matched && rule != nil {
-		chain := processTree.GetAncestors(ev.PID)
-		printer.PrintConnectAlert(&ev, chain, rule)
-	}
-}
-
-const (
-	// Event sizes: type(1) + fields
-	minExecEventSize     = 1 + 4 + 4 + 8 + events.TaskCommLen + events.TaskCommLen // 49 bytes
-	minFileOpenEventSize = 1 + 4 + 8 + 4 + events.PathMaxLen                       // 273 bytes
-	minConnectEventSize  = 1 + 4 + 8 + 2 + 2 + 4 + 16                              // 37 bytes
-)
-
-func decodeExecEvent(data []byte) (events.ExecEvent, error) {
-	if len(data) < minExecEventSize {
-		return events.ExecEvent{}, fmt.Errorf("exec event payload too small: %d bytes", len(data))
-	}
-
-	var ev events.ExecEvent
-	offset := 1 // Skip type byte at index 0
-	ev.PID = binary.LittleEndian.Uint32(data[offset : offset+4])
-	offset += 4
-	ev.PPID = binary.LittleEndian.Uint32(data[offset : offset+4])
-	offset += 4
-	ev.CgroupID = binary.LittleEndian.Uint64(data[offset : offset+8])
-	offset += 8
-	copy(ev.Comm[:], data[offset:offset+16])
-	offset += 16
-	copy(ev.PComm[:], data[offset:offset+16])
-
-	return ev, nil
-}
-
-func decodeFileOpenEvent(data []byte) (events.FileOpenEvent, error) {
-	if len(data) < minFileOpenEventSize {
-		return events.FileOpenEvent{}, fmt.Errorf("file open event too small: %d bytes", len(data))
-	}
-
-	var ev events.FileOpenEvent
-	offset := 1 // Skip type byte at index 0
-	ev.PID = binary.LittleEndian.Uint32(data[offset : offset+4])
-	offset += 4
-	ev.CgroupID = binary.LittleEndian.Uint64(data[offset : offset+8])
-	offset += 8
-	ev.Flags = binary.LittleEndian.Uint32(data[offset : offset+4])
-	offset += 4
-	copy(ev.Filename[:], data[offset:offset+events.PathMaxLen])
-
-	return ev, nil
-}
-
-func decodeConnectEvent(data []byte) (events.ConnectEvent, error) {
-	if len(data) < minConnectEventSize {
-		return events.ConnectEvent{}, fmt.Errorf("connect event too small: %d bytes", len(data))
-	}
-
-	var ev events.ConnectEvent
-	offset := 1 // Skip type byte at index 0
-	ev.PID = binary.LittleEndian.Uint32(data[offset : offset+4])
-	offset += 4
-	ev.CgroupID = binary.LittleEndian.Uint64(data[offset : offset+8])
-	offset += 8
-	ev.Family = binary.LittleEndian.Uint16(data[offset : offset+2])
-	offset += 2
-	ev.Port = binary.LittleEndian.Uint16(data[offset : offset+2])
-	offset += 2
-	ev.AddrV4 = binary.LittleEndian.Uint32(data[offset : offset+4])
-	offset += 4
-	copy(ev.AddrV6[:], data[offset:offset+16])
-
-	return ev, nil
-}
-
+// add file paths from rules to BPF map for filtering.
 func populateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath string) error {
 	if bpfMap == nil {
 		return fmt.Errorf("monitored_paths map is nil")
@@ -261,7 +263,7 @@ func populateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath 
 	}
 
 	count := 0
-	value := uint8(1) // Dummy value, we only care about key existence
+	value := uint8(1)
 
 	for path := range pathSet {
 		key := make([]byte, events.PathMaxLen)
