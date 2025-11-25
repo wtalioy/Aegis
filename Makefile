@@ -1,28 +1,70 @@
-BPF_C_SRC = ./bpf/main.bpf.c
-BPF_O_OBJ = ./bpf/main.bpf.o
+# EulerGuard Build System
+BPF_SRC = ./bpf/main.bpf.c
+BPF_OBJ = ./bpf/main.bpf.o
+VMLINUX = ./bpf/vmlinux.h
+BUILD   = ./build
 
-VMLINUX_H = ./bpf/vmlinux.h
+all: cli
 
-BPF_CFLAGS = -g -O2 -target bpf -c
-BPF_CFLAGS += -I./bpf
+# eBPF
+bpf: $(VMLINUX)
+	@echo "==> Building eBPF..."
+	@clang -g -O2 -target bpf -c -I./bpf -o $(BPF_OBJ) $(BPF_SRC)
 
-all: build-bpf build-go
+$(VMLINUX):
+	@echo "==> Generating vmlinux.h..."
+	@bpftool btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX)
 
-build-bpf: $(VMLINUX_H)
-	@echo "==> Build eBPF (C)..."
-	@clang $(BPF_CFLAGS) -o $(BPF_O_OBJ) $(BPF_C_SRC)
+# Frontend
+frontend:
+	@echo "==> Building frontend..."
+	@cd frontend && npm install && npm run build
 
-$(VMLINUX_H):
-	@echo "==> [Dependency missing] Generating vmlinux.h from kernel BTF ..."
-	@echo "    (This may take a few seconds, but will only be executed once)"
-	@bpftool btf dump file /sys/kernel/btf/vmlinux format c > $(VMLINUX_H)
+# Builds
+cli: bpf
+	@echo "==> Building CLI..."
+	@mkdir -p $(BUILD)
+	@go build -o $(BUILD)/eulerguard ./cmd
 
-build-go:
-	@echo "==> Build Go..."
-	@go build -o ./build/eulerguard ./cmd/eulerguard
+web: bpf frontend
+	@echo "==> Building Web Server..."
+	@mkdir -p $(BUILD)
+	@cp -r frontend cmd/
+	@go build -tags web -o $(BUILD)/eulerguard-web ./cmd
+	@rm -rf cmd/frontend
 
+wails: bpf frontend
+	@echo "==> Building Wails GUI..."
+	@mkdir -p $(BUILD)
+	@cp -r frontend cmd/
+	@cp wails.json cmd/
+	@cd cmd && wails build -skipbindings -tags wails
+	@mv cmd/build/bin/eulerguard-gui $(BUILD)/
+	@rm -rf cmd/frontend cmd/wails.json cmd/build
+
+# Run
+run-cli: cli
+	@sudo $(BUILD)/eulerguard
+
+run-web: web
+	@echo "Open http://localhost:3000"
+	@sudo $(BUILD)/eulerguard-web
+
+run-wails: wails
+	@sudo $(BUILD)/eulerguard-gui
+
+# Clean
 clean:
-	@echo "==> Clean..."
-	@rm -f $(BPF_O_OBJ) ./build/eulerguard $(VMLINUX_H)
+	@rm -f $(BPF_OBJ) $(BUILD)/eulerguard $(BUILD)/eulerguard-web $(BUILD)/eulerguard-gui
+	@rm -rf $(BUILD)/bin cmd/frontend cmd/build
 
-.PHONY: all build-bpf build-go clean
+clean-all: clean
+	@rm -rf ./frontend/node_modules ./frontend/dist
+
+help:
+	@echo "make cli     - CLI (no frontend)"
+	@echo "make web     - Web server (:3000)"
+	@echo "make wails   - Desktop GUI"
+	@echo "make run-*   - Build and run (sudo)"
+
+.PHONY: all bpf frontend cli web wails dev run-cli run-web run-wails clean clean-all help
