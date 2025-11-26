@@ -4,13 +4,15 @@ import { X, Copy, Search, Terminal, Globe, FileText, Container } from 'lucide-vu
 import type { StreamEvent, ProcessInfo } from '../../lib/api'
 import { getAncestors } from '../../lib/api'
 
+type EventWithId = StreamEvent & { id: string }
+
 const props = defineProps<{
-  event: StreamEvent | null
+  event: EventWithId | null
 }>()
 
 defineEmits<{
   close: []
-  huntSimilar: [event: StreamEvent]
+  huntSimilar: [event: EventWithId]
 }>()
 
 const ancestors = ref<ProcessInfo[]>([])

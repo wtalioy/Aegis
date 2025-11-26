@@ -8,13 +8,12 @@ import EventRow from '../components/stream/EventRow.vue'
 import EventDetailsPanel from '../components/stream/EventDetailsPanel.vue'
 import { subscribeToAllEvents, type StreamEvent } from '../lib/api'
 
-// Event buffer with max size
-const MAX_BUFFER_SIZE = 10000
-const events = ref<StreamEvent[]>([])
+const MAX_BUFFER_SIZE = 1000
+const events = ref<(StreamEvent & { id: string })[]>([])
 const isPaused = ref(false)
-const selectedEvent = ref<StreamEvent | null>(null)
+const selectedEvent = ref<(StreamEvent & { id: string }) | null>(null)
+let eventIdCounter = 0
 
-// Filters
 const filters = ref({
   exec: true,
   connect: true,
@@ -22,28 +21,25 @@ const filters = ref({
   containerOnly: false
 })
 
-// Filtered events
 const filteredEvents = computed(() => {
-  return events.value.filter(event => {
-    // Type filter
+  const filtered = events.value.filter(event => {
     if (!filters.value[event.type]) return false
-    // Container filter
     if (filters.value.containerOnly && !event.inContainer) return false
     return true
   })
+  return [...filtered].sort((a, b) => b.timestamp - a.timestamp)
 })
 
-// Event handling
 let unsubscribe: (() => void) | null = null
 
 const handleEvent = (event: StreamEvent) => {
   if (isPaused.value) return
 
-  events.value.unshift(event)
+  const eventWithId = { ...event, id: `evt-${eventIdCounter++}` }
+  events.value.push(eventWithId)
   
-  // Trim buffer if too large
   if (events.value.length > MAX_BUFFER_SIZE) {
-    events.value = events.value.slice(0, MAX_BUFFER_SIZE)
+    events.value = events.value.slice(-MAX_BUFFER_SIZE)
   }
 }
 
@@ -56,7 +52,7 @@ const clearEvents = () => {
   selectedEvent.value = null
 }
 
-const selectEvent = (event: StreamEvent) => {
+const selectEvent = (event: StreamEvent & { id: string }) => {
   selectedEvent.value = event
 }
 
@@ -65,9 +61,7 @@ const closeDetails = () => {
 }
 
 const huntSimilar = (event: StreamEvent) => {
-  // Filter to show similar events (same type + same process or destination)
   if (event.type === 'exec') {
-    // Could implement search/filter logic here
     console.log('Hunt similar exec:', event.comm)
   }
 }
@@ -121,13 +115,13 @@ onUnmounted(() => {
           v-if="filteredEvents.length > 0"
           class="scroller"
           :items="filteredEvents"
-          :item-size="41"
-          key-field="timestamp"
+          :item-size="40"
+          key-field="id"
           v-slot="{ item }"
         >
           <EventRow
             :event="item"
-            :is-selected="selectedEvent?.timestamp === item.timestamp && selectedEvent?.pid === item.pid"
+            :is-selected="selectedEvent?.id === item.id"
             @select="selectEvent"
           />
         </RecycleScroller>
@@ -248,7 +242,12 @@ onUnmounted(() => {
 }
 
 .scroller {
-  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: auto;
 }
 
 /* Empty State */
@@ -284,5 +283,9 @@ onUnmounted(() => {
 /* Virtual scroller overrides */
 :deep(.vue-recycle-scroller__item-wrapper) {
   overflow: visible;
+}
+
+:deep(.vue-recycle-scroller__item-view) {
+  box-sizing: border-box;
 }
 </style>

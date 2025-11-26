@@ -3,13 +3,15 @@ import { computed } from 'vue'
 import { Terminal, Globe, FileText, Container } from 'lucide-vue-next'
 import type { StreamEvent } from '../../lib/api'
 
+type EventWithId = StreamEvent & { id: string }
+
 const props = defineProps<{
-  event: StreamEvent
+  event: EventWithId
   isSelected: boolean
 }>()
 
 defineEmits<{
-  select: [event: StreamEvent]
+  select: [event: EventWithId]
 }>()
 
 const formatTime = (timestamp: number) => {
@@ -79,10 +81,12 @@ const processName = computed(() => {
   grid-template-columns: 100px 32px 120px 1fr 28px;
   align-items: center;
   gap: 12px;
-  padding: 8px 16px;
+  padding: 0 16px;
+  height: 40px;
   border-bottom: 1px solid var(--border-subtle);
   cursor: pointer;
   transition: background var(--transition-fast);
+  box-sizing: border-box;
 }
 
 .event-row:hover {
