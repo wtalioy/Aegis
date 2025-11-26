@@ -27,7 +27,7 @@ type Stats struct {
 	maxAlerts   int
 	totalAlerts atomic.Int64
 
-	containers   map[string]struct{}
+	containers   map[uint64]struct{}
 	containersMu sync.RWMutex
 
 	onRateUpdate func(exec, file, net int64)
@@ -41,7 +41,7 @@ func NewStats() *Stats {
 	s := &Stats{
 		alerts:     make([]FrontendAlert, 0, 100),
 		maxAlerts:  100,
-		containers: make(map[string]struct{}),
+		containers: make(map[uint64]struct{}),
 		eventSubs:  make(map[chan any]struct{}),
 	}
 	go s.rateLoop()
@@ -77,7 +77,7 @@ func (s *Stats) RecordExec(ev events.ExecEvent) {
 
 	if ev.CgroupID > 1 {
 		s.containersMu.Lock()
-		s.containers[strconv.FormatUint(ev.CgroupID, 10)] = struct{}{}
+		s.containers[ev.CgroupID] = struct{}{}
 		s.containersMu.Unlock()
 	}
 }
