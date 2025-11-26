@@ -91,3 +91,13 @@ type DetectionRuleDTO struct {
 	Match       map[string]string `json:"match"`
 	YAML        string            `json:"yaml"`
 }
+
+// ProbeStatsDTO represents real-time probe statistics
+type ProbeStatsDTO struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Tracepoint string `json:"tracepoint"`
+	Active     bool   `json:"active"`
+	EventsRate int64  `json:"eventsRate"`  // events per second
+	TotalCount int64  `json:"totalCount"`  // total events captured
+}

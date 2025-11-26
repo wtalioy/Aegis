@@ -146,6 +146,39 @@ func (a *App) GetProbeInfo() []map[string]string {
 	}
 }
 
+// GetProbeStats returns real-time statistics for each probe
+func (a *App) GetProbeStats() []ProbeStatsDTO {
+	execRate, fileRate, netRate := a.stats.Rates()
+	execCount, fileCount, netCount := a.stats.Counts()
+
+	return []ProbeStatsDTO{
+		{
+			ID:         "exec",
+			Name:       "Process Execution",
+			Tracepoint: "tp/sched/sched_process_exec",
+			Active:     true,
+			EventsRate: execRate,
+			TotalCount: execCount,
+		},
+		{
+			ID:         "openat",
+			Name:       "File Access",
+			Tracepoint: "tp/syscalls/sys_enter_openat",
+			Active:     true,
+			EventsRate: fileRate,
+			TotalCount: fileCount,
+		},
+		{
+			ID:         "connect",
+			Name:       "Network Connection",
+			Tracepoint: "tp/syscalls/sys_enter_connect",
+			Active:     true,
+			EventsRate: netRate,
+			TotalCount: netCount,
+		},
+	}
+}
+
 // GetRules returns all loaded detection rules
 func (a *App) GetRules() []DetectionRuleDTO {
 	if a.ruleEngine == nil {

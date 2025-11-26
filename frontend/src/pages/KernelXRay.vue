@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { Cpu, BookOpen, Info } from 'lucide-vue-next'
 import ArchitectureDiagram from '../components/kernel/ArchitectureDiagram.vue'
 import ProbeCard from '../components/kernel/ProbeCard.vue'
 import { probes, kernelStructs, type ProbeInfo } from '../data/probes'
+import { getProbeStats, type ProbeStats } from '../lib/api'
 
 const selectedProbe = ref<ProbeInfo | null>(null)
+const probeStats = ref<ProbeStats[]>([])
+let pollInterval: number | null = null
 
 const selectProbe = (probe: ProbeInfo) => {
   selectedProbe.value = probe
@@ -14,6 +17,29 @@ const selectProbe = (probe: ProbeInfo) => {
 const closeProbeCard = () => {
   selectedProbe.value = null
 }
+
+const fetchProbeStats = async () => {
+  try {
+    probeStats.value = await getProbeStats()
+  } catch (e) {
+    console.error('Failed to fetch probe stats:', e)
+  }
+}
+
+const getProbeStatsById = (id: string): ProbeStats | undefined => {
+  return probeStats.value.find(p => p.id === id)
+}
+
+onMounted(() => {
+  fetchProbeStats()
+  pollInterval = window.setInterval(fetchProbeStats, 1000)
+})
+
+onUnmounted(() => {
+  if (pollInterval) {
+    clearInterval(pollInterval)
+  }
+})
 </script>
 
 <template>
@@ -42,7 +68,7 @@ const closeProbeCard = () => {
             How EulerGuard monitors your system with eBPF
           </span>
         </div>
-        <ArchitectureDiagram @select-probe="selectProbe" />
+        <ArchitectureDiagram :probe-stats="probeStats" @select-probe="selectProbe" />
       </section>
 
       <!-- Probe Overview -->

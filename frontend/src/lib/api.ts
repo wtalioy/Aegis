@@ -99,6 +99,16 @@ export interface GeneratedRule {
     selected: boolean
 }
 
+// Probe statistics for Kernel X-Ray
+export interface ProbeStats {
+    id: string
+    name: string
+    tracepoint: string
+    active: boolean
+    eventsRate: number
+    totalCount: number
+}
+
 type EventCallback<T> = (data: T) => void
 type UnsubscribeFn = () => void
 
@@ -144,6 +154,19 @@ export async function getRules(): Promise<DetectionRule[]> {
         return []
     }
     const resp = await fetch('/api/rules')
+    return resp.json()
+}
+
+// Get probe statistics for Kernel X-Ray
+export async function getProbeStats(): Promise<ProbeStats[]> {
+    if (isWailsMode) {
+        const module = await import('../../wailsjs/go/gui/App') as any
+        if (typeof module.GetProbeStats === 'function') {
+            return module.GetProbeStats()
+        }
+        return []
+    }
+    const resp = await fetch('/api/probes/stats')
     return resp.json()
 }
 

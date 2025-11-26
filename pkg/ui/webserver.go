@@ -153,6 +153,16 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		w.Write(data)
 	})
 
+	// Get probe stats for Kernel X-Ray
+	mux.HandleFunc("/api/probes/stats", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		w.Header().Set("Content-Type", "application/json")
+
+		stats := app.GetProbeStats()
+		data, _ := json.Marshal(stats)
+		w.Write(data)
+	})
+
 	// Learning mode status
 	mux.HandleFunc("/api/learning/status", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
