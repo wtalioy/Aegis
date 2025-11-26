@@ -58,12 +58,14 @@ type ProcessInfoDTO struct {
 }
 
 type RuleDTO struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Severity    string `json:"severity"`
-	Action      string `json:"action"`
-	YAML        string `json:"yaml"`
-	Selected    bool   `json:"selected"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Severity    string            `json:"severity"`
+	Action      string            `json:"action"`
+	Type        string            `json:"type"` // "exec", "file", "connect"
+	Match       map[string]string `json:"match,omitempty"`
+	YAML        string            `json:"yaml"`
+	Selected    bool              `json:"selected,omitempty"`
 }
 
 type LearningStatusDTO struct {
@@ -77,35 +79,22 @@ type LearningStatusDTO struct {
 	RemainingSeconds int   `json:"remainingSeconds"`
 }
 
-// DetectionRuleDTO represents a loaded detection rule for the frontend
-type DetectionRuleDTO struct {
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Severity    string            `json:"severity"`
-	Action      string            `json:"action"`
-	Type        string            `json:"type"` // "exec", "file", "connect"
-	Match       map[string]string `json:"match"`
-	YAML        string            `json:"yaml"`
-}
-
-// ProbeStatsDTO represents real-time probe statistics
 type ProbeStatsDTO struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	Tracepoint string `json:"tracepoint"`
 	Active     bool   `json:"active"`
-	EventsRate int64  `json:"eventsRate"`  // events per second
-	TotalCount int64  `json:"totalCount"`  // total events captured
+	EventsRate int64  `json:"eventsRate"`
+	TotalCount int64  `json:"totalCount"`
 }
 
-// WorkloadDTO represents a workload (cgroup) for the frontend
 type WorkloadDTO struct {
-	ID           string `json:"id"`           // Cgroup ID as hex string
-	CgroupPath   string `json:"cgroupPath"`   // Human-readable cgroup path
-	ExecCount    int64  `json:"execCount"`    // Number of exec events
-	FileCount    int64  `json:"fileCount"`    // Number of file events
-	ConnectCount int64  `json:"connectCount"` // Number of connect events
-	AlertCount   int64  `json:"alertCount"`   // Number of alerts
-	FirstSeen    int64  `json:"firstSeen"`    // Timestamp of first event
-	LastSeen     int64  `json:"lastSeen"`     // Timestamp of last event
+	ID           string `json:"id"`
+	CgroupPath   string `json:"cgroupPath"`
+	ExecCount    int64  `json:"execCount"`
+	FileCount    int64  `json:"fileCount"`
+	ConnectCount int64  `json:"connectCount"`
+	AlertCount   int64  `json:"alertCount"`
+	FirstSeen    int64  `json:"firstSeen"`
+	LastSeen     int64  `json:"lastSeen"`
 }

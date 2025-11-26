@@ -27,6 +27,7 @@ type Core struct {
 	RuleEngine       *rules.Engine
 	ProcessTree      *proc.ProcessTree
 	WorkloadRegistry *workload.Registry
+	RulesPath        string // Path to rules file for reloading
 }
 
 func Init(opts config.Options) (*Core, error) {
@@ -61,6 +62,7 @@ func Init(opts config.Options) (*Core, error) {
 	}
 	c.Reader = reader
 
+	c.RulesPath = opts.RulesPath
 	c.Rules, c.RuleEngine = LoadRules(opts.RulesPath)
 
 	if err := PopulateMonitoredPaths(objs.MonitoredPaths, c.Rules, opts.RulesPath); err != nil {
@@ -68,6 +70,42 @@ func Init(opts config.Options) (*Core, error) {
 	}
 
 	return c, nil
+}
+
+func (c *Core) ReloadRules() error {
+	newRules, newEngine := LoadRules(c.RulesPath)
+	c.Rules = newRules
+	c.RuleEngine = newEngine
+
+	if c.Objs != nil && c.Objs.MonitoredPaths != nil {
+		if err := RepopulateMonitoredPaths(c.Objs.MonitoredPaths, c.Rules, c.RulesPath); err != nil {
+			return fmt.Errorf("failed to repopulate monitored paths: %w", err)
+		}
+	}
+
+	log.Printf("Rules reloaded: %d rules from %s", len(c.Rules), c.RulesPath)
+	return nil
+}
+
+func RepopulateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath string) error {
+	if bpfMap == nil {
+		return fmt.Errorf("monitored_paths map is nil")
+	}
+
+	var key [events.PathMaxLen]byte
+	var val uint8
+	iter := bpfMap.Iterate()
+	keysToDelete := make([][]byte, 0)
+	for iter.Next(&key, &val) {
+		keyCopy := make([]byte, events.PathMaxLen)
+		copy(keyCopy, key[:])
+		keysToDelete = append(keysToDelete, keyCopy)
+	}
+	for _, k := range keysToDelete {
+		_ = bpfMap.Delete(k)
+	}
+
+	return PopulateMonitoredPaths(bpfMap, ruleList, rulesPath)
 }
 
 func (c *Core) Close() {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Brain, Play, CheckCircle } from 'lucide-vue-next'
 import LearningTimer from '../components/profiler/LearningTimer.vue'
 import LiveCapture from '../components/profiler/LiveCapture.vue'
@@ -10,8 +11,10 @@ import {
   stopLearning, 
   applyWhitelistRules,
   type LearningStatus,
-  type GeneratedRule
+  type Rule
 } from '../lib/api'
+
+const router = useRouter()
 
 type ProfilerState = 'idle' | 'learning' | 'reviewing'
 
@@ -22,9 +25,12 @@ const learningStatus = ref<LearningStatus>({
   startTime: 0,
   duration: 0,
   patternCount: 0,
+  execCount: 0,
+  fileCount: 0,
+  connectCount: 0,
   remainingSeconds: 0
 })
-const generatedRules = ref<GeneratedRule[]>([])
+const generatedRules = ref<Rule[]>([])
 const applying = ref(false)
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
@@ -69,12 +75,13 @@ const handleApplyRules = async (selectedIndices: number[]) => {
   applying.value = true
   try {
     await applyWhitelistRules(selectedIndices)
-    success.value = `Successfully saved ${selectedIndices.length} rules to whitelist_rules.yaml`
+    success.value = `Successfully merged ${selectedIndices.length} rules into rules.yaml`
     state.value = 'idle'
     generatedRules.value = []
+    // Navigate to Rules page after a short delay so user sees the success message
     setTimeout(() => {
-      success.value = null
-    }, 5000)
+      router.push('/rules')
+    }, 1500)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to apply rules'
   } finally {
@@ -214,6 +221,9 @@ onUnmounted(() => {
           :remaining-seconds="learningStatus.remainingSeconds"
           :total-duration="learningStatus.duration"
           :pattern-count="learningStatus.patternCount"
+          :exec-count="learningStatus.execCount"
+          :file-count="learningStatus.fileCount"
+          :connect-count="learningStatus.connectCount"
           @stop="handleStopLearning"
         />
       </div>

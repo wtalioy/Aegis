@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"eulerguard/pkg/profiler"
+	"eulerguard/pkg/rules"
 
 	"gopkg.in/yaml.v3"
 )
@@ -66,11 +67,16 @@ func (a *App) GetLearningStatus() LearningStatusDTO {
 		}
 	}
 
+	execCount, fileCount, connectCount := a.profiler.Counts()
+
 	return LearningStatusDTO{
 		Active:           active,
 		StartTime:        a.learning.startTime.UnixMilli(),
 		Duration:         int(a.learning.duration.Seconds()),
 		PatternCount:     a.profiler.Count(),
+		ExecCount:        execCount,
+		FileCount:        fileCount,
+		ConnectCount:     connectCount,
 		RemainingSeconds: remaining,
 	}
 }
@@ -85,7 +91,6 @@ func (a *App) StartLearning(durationSec int) error {
 	a.learning.startTime = time.Now()
 	a.learning.duration = time.Duration(durationSec) * time.Second
 
-	// Set profiler on bridge so it receives events
 	a.bridge.SetProfiler(a.profiler)
 
 	go func() {
@@ -100,30 +105,30 @@ func (a *App) StartLearning(durationSec int) error {
 }
 
 func (a *App) StopLearning() ([]RuleDTO, error) {
-	// Handle case where learning timed out but profiler still has data
 	if a.profiler == nil {
 		return nil, fmt.Errorf("no profiler data available")
 	}
 
-	// Stop the profiler if still active
 	if a.learning.active {
 		a.profiler.Stop()
 		a.learning.active = false
 	}
 
-	// Clear profiler from bridge
 	a.bridge.SetProfiler(nil)
 
-	rules := a.profiler.GenerateRules()
-	result := make([]RuleDTO, len(rules))
+	generatedRules := a.profiler.GenerateRules()
+	result := make([]RuleDTO, len(generatedRules))
 
-	for i, rule := range rules {
+	for i, rule := range generatedRules {
 		yamlBytes, _ := yaml.Marshal(rule)
+		matchMap := buildMatchMap(rule)
 		result[i] = RuleDTO{
 			Name:        rule.Name,
 			Description: rule.Description,
 			Severity:    rule.Severity,
-			Action:      rule.Action,
+			Action:      string(rule.Action),
+			Type:        string(rule.Type),
+			Match:       matchMap,
 			YAML:        string(yamlBytes),
 			Selected:    true,
 		}
@@ -135,7 +140,24 @@ func (a *App) ApplyWhitelistRules(ruleIndices []int) error {
 	if a.profiler == nil {
 		return fmt.Errorf("no profiler data available")
 	}
-	return a.profiler.SaveYAML(a.opts.LearnOutputPath)
+
+	selectedRules := a.profiler.GenerateRulesFiltered(ruleIndices)
+	if len(selectedRules) == 0 {
+		return fmt.Errorf("no rules selected")
+	}
+
+	existingRules, err := rules.LoadRules(a.opts.RulesPath)
+	if err != nil {
+		existingRules = []rules.Rule{}
+	}
+
+	mergedRules := rules.MergeRules(existingRules, selectedRules)
+
+	if err := rules.SaveRules(a.opts.RulesPath, mergedRules); err != nil {
+		return fmt.Errorf("failed to save rules: %w", err)
+	}
+
+	return nil
 }
 
 func (a *App) GetProbeInfo() []map[string]string {
@@ -146,7 +168,6 @@ func (a *App) GetProbeInfo() []map[string]string {
 	}
 }
 
-// GetProbeStats returns real-time statistics for each probe
 func (a *App) GetProbeStats() []ProbeStatsDTO {
 	execRate, fileRate, netRate := a.stats.Rates()
 	execCount, fileCount, netCount := a.stats.Counts()
@@ -179,7 +200,6 @@ func (a *App) GetProbeStats() []ProbeStatsDTO {
 	}
 }
 
-// GetWorkloads returns all tracked workloads
 func (a *App) GetWorkloads() []WorkloadDTO {
 	if a.workloadRegistry == nil {
 		return []WorkloadDTO{}
@@ -204,7 +224,6 @@ func (a *App) GetWorkloads() []WorkloadDTO {
 	return result
 }
 
-// GetWorkload returns a single workload by ID
 func (a *App) GetWorkload(id string) *WorkloadDTO {
 	if a.workloadRegistry == nil {
 		return nil
@@ -232,60 +251,54 @@ func (a *App) GetWorkload(id string) *WorkloadDTO {
 	}
 }
 
-// GetRules returns all loaded detection rules
-func (a *App) GetRules() []DetectionRuleDTO {
+func (a *App) GetRules() []RuleDTO {
 	if a.ruleEngine == nil {
-		return []DetectionRuleDTO{}
+		return []RuleDTO{}
 	}
 
-	rules := a.ruleEngine.GetRules()
-	result := make([]DetectionRuleDTO, len(rules))
+	ruleList := a.ruleEngine.GetRules()
+	result := make([]RuleDTO, len(ruleList))
 
-	for i, rule := range rules {
-		// Determine rule type based on match conditions
-		ruleType := "exec"
-		if rule.Match.Filename != "" || rule.Match.FilePath != "" {
-			ruleType = "file"
-		} else if rule.Match.DestPort != 0 || rule.Match.DestIP != "" {
-			ruleType = "connect"
-		}
-
-		// Build match conditions map
-		matchMap := make(map[string]string)
-		if rule.Match.ProcessName != "" {
-			matchMap["process_name"] = rule.Match.ProcessName
-		}
-		if rule.Match.ParentName != "" {
-			matchMap["parent_name"] = rule.Match.ParentName
-		}
-		if rule.Match.Filename != "" {
-			matchMap["filename"] = rule.Match.Filename
-		}
-		if rule.Match.FilePath != "" {
-			matchMap["file_path"] = rule.Match.FilePath
-		}
-		if rule.Match.DestPort != 0 {
-			matchMap["dest_port"] = fmt.Sprintf("%d", rule.Match.DestPort)
-		}
-		if rule.Match.DestIP != "" {
-			matchMap["dest_ip"] = rule.Match.DestIP
-		}
-		if rule.Match.CgroupID != "" {
-			matchMap["cgroup_id"] = rule.Match.CgroupID
-		}
-
+	for i, rule := range ruleList {
+		matchMap := buildMatchMap(rule)
 		yamlBytes, _ := yaml.Marshal(rule)
 
-		result[i] = DetectionRuleDTO{
+		result[i] = RuleDTO{
 			Name:        rule.Name,
 			Description: rule.Description,
 			Severity:    rule.Severity,
-			Action:      rule.Action,
-			Type:        ruleType,
+			Action:      string(rule.Action),
+			Type:        string(rule.DeriveType()),
 			Match:       matchMap,
 			YAML:        string(yamlBytes),
 		}
 	}
 
 	return result
+}
+
+func buildMatchMap(rule rules.Rule) map[string]string {
+	matchMap := make(map[string]string)
+	if rule.Match.ProcessName != "" {
+		matchMap["process_name"] = rule.Match.ProcessName
+	}
+	if rule.Match.ParentName != "" {
+		matchMap["parent_name"] = rule.Match.ParentName
+	}
+	if rule.Match.Filename != "" {
+		matchMap["filename"] = rule.Match.Filename
+	}
+	if rule.Match.FilePath != "" {
+		matchMap["file_path"] = rule.Match.FilePath
+	}
+	if rule.Match.DestPort != 0 {
+		matchMap["dest_port"] = fmt.Sprintf("%d", rule.Match.DestPort)
+	}
+	if rule.Match.DestIP != "" {
+		matchMap["dest_ip"] = rule.Match.DestIP
+	}
+	if rule.Match.CgroupID != "" {
+		matchMap["cgroup_id"] = rule.Match.CgroupID
+	}
+	return matchMap
 }

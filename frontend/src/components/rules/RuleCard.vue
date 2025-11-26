@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { ChevronDown, ChevronRight, Terminal, Globe, FileText, Copy, Check } from 'lucide-vue-next'
-import type { DetectionRule } from '../../lib/api'
+import type { Rule } from '../../lib/api'
 
 const props = defineProps<{
-  rule: DetectionRule
+  rule: Rule
 }>()
 
 const isExpanded = ref(false)
@@ -15,12 +15,14 @@ const typeIcon = computed(() => {
     case 'exec': return Terminal
     case 'connect': return Globe
     case 'file': return FileText
+    default: return Terminal
   }
 })
 
 const severityClass = computed(() => `severity-${props.rule.severity}`)
 
 const matchEntries = computed(() => {
+  if (!props.rule.match) return []
   return Object.entries(props.rule.match).filter(([_, value]) => value)
 })
 

@@ -106,6 +106,32 @@ func (p *Profiler) Count() int {
 	return len(p.profiles)
 }
 
+func (p *Profiler) Counts() (exec, file, connect int) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	for profile := range p.profiles {
+		switch profile.Type {
+		case events.EventTypeExec:
+			exec++
+		case events.EventTypeFileOpen:
+			file++
+		case events.EventTypeConnect:
+			connect++
+		}
+	}
+	return
+}
+
+func (p *Profiler) GetProfiles() []BehaviorProfile {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	result := make([]BehaviorProfile, 0, len(p.profiles))
+	for profile := range p.profiles {
+		result = append(result, profile)
+	}
+	return result
+}
+
 func (p *Profiler) GenerateRules() []rules.Rule {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -120,6 +146,26 @@ func (p *Profiler) GenerateRules() []rules.Rule {
 	return ruleList
 }
 
+func (p *Profiler) GenerateRulesFiltered(indices []int) []rules.Rule {
+	allRules := p.GenerateRules()
+	if len(indices) == 0 {
+		return allRules
+	}
+
+	indexSet := make(map[int]bool)
+	for _, i := range indices {
+		indexSet[i] = true
+	}
+
+	result := make([]rules.Rule, 0, len(indices))
+	for i, rule := range allRules {
+		if indexSet[i] {
+			result = append(result, rule)
+		}
+	}
+	return result
+}
+
 func (p *Profiler) profileToRule(profile BehaviorProfile) rules.Rule {
 	rule := rules.Rule{
 		Description: "Auto-generated from learning mode",
@@ -130,6 +176,7 @@ func (p *Profiler) profileToRule(profile BehaviorProfile) rules.Rule {
 	switch profile.Type {
 	case events.EventTypeExec:
 		rule.Name = fmt.Sprintf("Allow %s from %s", profile.Process, profile.Parent)
+		rule.Type = rules.RuleTypeExec
 		rule.Match = rules.MatchCondition{
 			ProcessName:     profile.Process,
 			ProcessNameType: rules.MatchTypeExact,
@@ -139,12 +186,14 @@ func (p *Profiler) profileToRule(profile BehaviorProfile) rules.Rule {
 
 	case events.EventTypeFileOpen:
 		rule.Name = fmt.Sprintf("Allow access to %s", profile.File)
+		rule.Type = rules.RuleTypeFile
 		rule.Match = rules.MatchCondition{
 			Filename: profile.File,
 		}
 
 	case events.EventTypeConnect:
 		rule.Name = fmt.Sprintf("Allow connection to port %d", profile.Port)
+		rule.Type = rules.RuleTypeConnect
 		rule.Match = rules.MatchCondition{
 			DestPort: profile.Port,
 		}

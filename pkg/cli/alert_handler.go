@@ -17,21 +17,26 @@ var _ events.EventHandler = (*cliAlertHandler)(nil)
 
 func (h *cliAlertHandler) HandleExec(ev events.ExecEvent) {
 	processed := h.printer.Print(ev)
-	for _, alert := range h.ruleEngine.Match(processed) {
+	if _, _, allowed := h.ruleEngine.MatchExec(processed); allowed {
+		return
+	}
+	for _, alert := range h.ruleEngine.CollectExecAlerts(processed) {
 		h.printer.PrintAlert(alert)
 	}
 }
 
 func (h *cliAlertHandler) HandleFileOpen(ev events.FileOpenEvent, filename string) {
-	if matched, rule := h.ruleEngine.MatchFile(filename, ev.PID, ev.CgroupID); matched && rule != nil {
-		chain := h.processTree.GetAncestors(ev.PID)
-		h.printer.PrintFileOpenAlert(&ev, chain, rule, filename)
+	matched, rule, allowed := h.ruleEngine.MatchFile(filename, ev.PID, ev.CgroupID)
+	if !matched || rule == nil || allowed {
+		return
 	}
+	h.printer.PrintFileOpenAlert(&ev, h.processTree.GetAncestors(ev.PID), rule, filename)
 }
 
 func (h *cliAlertHandler) HandleConnect(ev events.ConnectEvent) {
-	if matched, rule := h.ruleEngine.MatchConnect(&ev); matched && rule != nil {
-		chain := h.processTree.GetAncestors(ev.PID)
-		h.printer.PrintConnectAlert(&ev, chain, rule)
+	matched, rule, allowed := h.ruleEngine.MatchConnect(&ev)
+	if !matched || rule == nil || allowed {
+		return
 	}
+	h.printer.PrintConnectAlert(&ev, h.processTree.GetAncestors(ev.PID), rule)
 }

@@ -10,7 +10,6 @@ import (
 	"eulerguard/pkg/utils"
 )
 
-// WorkloadCountFunc is a function that returns the current workload count from the registry.
 type WorkloadCountFunc func() int
 
 type Stats struct {
@@ -32,10 +31,8 @@ type Stats struct {
 
 	onRateUpdate func(exec, file, net int64)
 
-	// Callback to get workload count from registry
 	workloadCountFn WorkloadCountFunc
 
-	// Event subscribers for SSE streaming
 	eventSubs   map[chan any]struct{}
 	eventSubsMu sync.RWMutex
 }
@@ -50,7 +47,6 @@ func NewStats() *Stats {
 	return s
 }
 
-// SetWorkloadCountFunc sets the callback to get workload count from the registry.
 func (s *Stats) SetWorkloadCountFunc(fn WorkloadCountFunc) {
 	s.workloadCountFn = fn
 }
@@ -122,7 +118,6 @@ func (s *Stats) Alerts() []FrontendAlert {
 	return result
 }
 
-// WorkloadCount returns the number of distinct workloads from the registry.
 func (s *Stats) WorkloadCount() int {
 	if s.workloadCountFn != nil {
 		return s.workloadCountFn()
@@ -165,14 +160,12 @@ func ConnectToFrontend(ev events.ConnectEvent, addr string) FrontendConnectEvent
 	}
 }
 
-// SubscribeEvents adds a subscriber channel for SSE streaming
 func (s *Stats) SubscribeEvents(ch chan any) {
 	s.eventSubsMu.Lock()
 	s.eventSubs[ch] = struct{}{}
 	s.eventSubsMu.Unlock()
 }
 
-// UnsubscribeEvents removes a subscriber channel
 func (s *Stats) UnsubscribeEvents(ch chan any) {
 	s.eventSubsMu.Lock()
 	delete(s.eventSubs, ch)

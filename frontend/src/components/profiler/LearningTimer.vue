@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Clock, StopCircle } from 'lucide-vue-next'
+import { Clock, StopCircle, Terminal, FileText, Globe } from 'lucide-vue-next'
 
 const props = defineProps<{
   remainingSeconds: number
   totalDuration: number
   patternCount: number
+  execCount?: number
+  fileCount?: number
+  connectCount?: number
 }>()
 
 defineEmits<{
@@ -45,6 +48,25 @@ const formatTime = (seconds: number) => {
     <div class="pattern-counter">
       <div class="counter-value font-mono">{{ patternCount }}</div>
       <div class="counter-label">patterns captured</div>
+    </div>
+
+    <!-- Breakdown by type -->
+    <div class="breakdown-grid">
+      <div class="breakdown-item exec">
+        <Terminal :size="14" />
+        <span class="breakdown-value font-mono">{{ execCount ?? 0 }}</span>
+        <span class="breakdown-label">Exec</span>
+      </div>
+      <div class="breakdown-item file">
+        <FileText :size="14" />
+        <span class="breakdown-value font-mono">{{ fileCount ?? 0 }}</span>
+        <span class="breakdown-label">File</span>
+      </div>
+      <div class="breakdown-item connect">
+        <Globe :size="14" />
+        <span class="breakdown-value font-mono">{{ connectCount ?? 0 }}</span>
+        <span class="breakdown-label">Network</span>
+      </div>
     </div>
 
     <button class="stop-btn" @click="$emit('stop')">
@@ -164,6 +186,41 @@ const formatTime = (seconds: number) => {
 .stop-btn:hover {
   background: var(--status-critical);
   color: white;
+}
+
+/* Breakdown Grid */
+.breakdown-grid {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.breakdown-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 20px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  min-width: 80px;
+}
+
+.breakdown-item.exec { color: var(--status-info); }
+.breakdown-item.file { color: var(--status-safe); }
+.breakdown-item.connect { color: var(--status-warning); }
+
+.breakdown-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.breakdown-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 </style>
 

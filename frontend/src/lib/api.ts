@@ -65,32 +65,33 @@ export interface FileEvent {
 
 export type StreamEvent = ExecEvent | ConnectEvent | FileEvent
 
-export interface DetectionRule {
-    name: string
-    description: string
-    severity: string
-    action: string
-    type: 'exec' | 'file' | 'connect'
-    match: Record<string, string>
-    yaml: string
-}
 
 export interface LearningStatus {
     active: boolean
     startTime: number
     duration: number
     patternCount: number
+    execCount: number
+    fileCount: number
+    connectCount: number
     remainingSeconds: number
 }
 
-export interface GeneratedRule {
+// Unified Rule type - used for both detection rules and generated allow rules
+export interface Rule {
     name: string
     description: string
     severity: string
-    action: string
+    action: string // 'alert' or 'allow'
+    type?: 'exec' | 'file' | 'connect' // May be derived on frontend if not provided
+    match?: Record<string, string>
     yaml: string
-    selected: boolean
+    selected?: boolean // For generated rules selection
 }
+
+// Backward compatibility aliases
+export type DetectionRule = Rule
+export type GeneratedRule = Rule
 
 export interface ProbeStats {
     id: string
@@ -342,6 +343,30 @@ export function subscribeToAllEvents(callback: EventCallback<StreamEvent>): Unsu
             console.error('Failed to parse SSE event:', e)
         }
     }
+
+    return () => eventSource.close()
+}
+
+// Subscribe to rules reload events
+export function subscribeToRulesReload(callback: () => void): UnsubscribeFn {
+    if (isWailsMode) {
+        let cleanup: (() => void) | null = null
+
+        import('../../wailsjs/runtime/runtime').then(({ EventsOn, EventsOff }) => {
+            EventsOn('rules:reload', callback)
+            cleanup = () => EventsOff('rules:reload')
+        })
+
+        return () => cleanup?.()
+    }
+
+    // For web mode, poll for changes (rules file watcher will trigger backend reload)
+    // We use SSE stream if available, otherwise fall back to polling
+    const eventSource = new EventSource('/api/stream')
+
+    eventSource.addEventListener('rules:reload', () => {
+        callback()
+    })
 
     return () => eventSource.close()
 }

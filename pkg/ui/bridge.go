@@ -112,7 +112,12 @@ func (b *Bridge) HandleExec(ev events.ExecEvent) {
 		Parent:    pcomm,
 	}
 
-	for _, alert := range re.Match(processed) {
+	// Check for allow rules first
+	if _, _, allowed := re.MatchExec(processed); allowed {
+		return
+	}
+
+	for _, alert := range re.CollectExecAlerts(processed) {
 		b.emitAlert(FrontendAlert{
 			ID:          fmt.Sprintf("exec-%d-%d", ev.PID, time.Now().UnixNano()),
 			Timestamp:   time.Now().UnixMilli(),
@@ -147,8 +152,8 @@ func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 		return
 	}
 
-	matched, rule := re.MatchFile(filename, ev.PID, ev.CgroupID)
-	if !matched || rule == nil {
+	matched, rule, allowed := re.MatchFile(filename, ev.PID, ev.CgroupID)
+	if !matched || rule == nil || allowed {
 		return
 	}
 
@@ -191,8 +196,8 @@ func (b *Bridge) HandleConnect(ev events.ConnectEvent) {
 		return
 	}
 
-	matched, rule := re.MatchConnect(&ev)
-	if !matched || rule == nil {
+	matched, rule, allowed := re.MatchConnect(&ev)
+	if !matched || rule == nil || allowed {
 		return
 	}
 

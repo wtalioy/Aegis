@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { FileCode, Terminal, Globe, FileText, RefreshCw, Search, Filter } from 'lucide-vue-next'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { FileCode, Terminal, Globe, FileText, RefreshCw, Search, Filter, Shield, ShieldCheck } from 'lucide-vue-next'
 import RuleCard from '../components/rules/RuleCard.vue'
-import { getRules, type DetectionRule } from '../lib/api'
+import { getRules, subscribeToRulesReload, type Rule } from '../lib/api'
 
-const rules = ref<DetectionRule[]>([])
+const rules = ref<Rule[]>([])
 const loading = ref(true)
 const searchQuery = ref('')
 const filterType = ref<string>('all')
 const filterSeverity = ref<string>('all')
+const filterAction = ref<string>('all')
 
-// Fetch rules
+let unsubscribeReload: (() => void) | null = null
+
 const fetchRules = async () => {
   loading.value = true
   try {
@@ -23,21 +25,28 @@ const fetchRules = async () => {
   }
 }
 
-// Filtered rules
+const deriveRuleType = (rule: Rule): string => {
+  if (rule.type) return rule.type
+  if (rule.match?.filename || rule.match?.file_path) return 'file'
+  if (rule.match?.dest_port || rule.match?.dest_ip) return 'connect'
+  return 'exec'
+}
+
 const filteredRules = computed(() => {
   let result = rules.value
 
-  // Type filter
-  if (filterType.value !== 'all') {
-    result = result.filter(r => r.type === filterType.value)
+  if (filterAction.value !== 'all') {
+    result = result.filter(r => r.action === filterAction.value)
   }
 
-  // Severity filter
+  if (filterType.value !== 'all') {
+    result = result.filter(r => deriveRuleType(r) === filterType.value)
+  }
+
   if (filterSeverity.value !== 'all') {
     result = result.filter(r => r.severity === filterSeverity.value)
   }
 
-  // Search filter
   if (searchQuery.value.trim()) {
     const query = searchQuery.value.toLowerCase()
     result = result.filter(r =>
@@ -49,32 +58,52 @@ const filteredRules = computed(() => {
   return result
 })
 
-// Grouped rules by type
 const groupedRules = computed(() => {
-  const groups: Record<string, DetectionRule[]> = {
-    exec: [],
-    file: [],
-    connect: []
-  }
+  const alertRules: Record<string, Rule[]> = { exec: [], file: [], connect: [] }
+  const allowRules: Record<string, Rule[]> = { exec: [], file: [], connect: [] }
   
   filteredRules.value.forEach(rule => {
-    if (groups[rule.type]) {
-      groups[rule.type].push(rule)
+    const target = rule.action === 'allow' ? allowRules : alertRules
+    const ruleType = deriveRuleType(rule)
+    if (target[ruleType]) {
+      target[ruleType].push(rule)
     }
   })
 
-  return groups
+  return { alert: alertRules, allow: allowRules }
 })
 
-// Stats
 const stats = computed(() => ({
   total: rules.value.length,
+  alert: rules.value.filter(r => r.action !== 'allow').length,
+  allow: rules.value.filter(r => r.action === 'allow').length,
   exec: rules.value.filter(r => r.type === 'exec').length,
   file: rules.value.filter(r => r.type === 'file').length,
   connect: rules.value.filter(r => r.type === 'connect').length,
 }))
 
-onMounted(fetchRules)
+const hasAlertRules = computed(() => 
+  groupedRules.value.alert.exec.length > 0 ||
+  groupedRules.value.alert.file.length > 0 ||
+  groupedRules.value.alert.connect.length > 0
+)
+
+const hasAllowRules = computed(() => 
+  groupedRules.value.allow.exec.length > 0 ||
+  groupedRules.value.allow.file.length > 0 ||
+  groupedRules.value.allow.connect.length > 0
+)
+
+onMounted(() => {
+  fetchRules()
+  unsubscribeReload = subscribeToRulesReload(() => {
+    fetchRules()
+  })
+})
+
+onUnmounted(() => {
+  unsubscribeReload?.()
+})
 </script>
 
 <template>
@@ -89,6 +118,16 @@ onMounted(fetchRules)
         <span class="page-subtitle">Manage security detection rules</span>
       </div>
       <div class="header-stats">
+        <div class="stat-item alert">
+          <Shield :size="14" class="stat-icon" />
+          <span class="stat-value">{{ stats.alert }}</span>
+          <span class="stat-label">Alert</span>
+        </div>
+        <div class="stat-item allow">
+          <ShieldCheck :size="14" class="stat-icon" />
+          <span class="stat-value">{{ stats.allow }}</span>
+          <span class="stat-label">Allow</span>
+        </div>
         <div class="stat-item">
           <Terminal :size="14" class="stat-icon exec" />
           <span class="stat-value">{{ stats.exec }}</span>
@@ -121,6 +160,12 @@ onMounted(fetchRules)
 
       <div class="filter-group">
         <Filter :size="14" class="filter-icon" />
+        <select v-model="filterAction" class="filter-select">
+          <option value="all">All Actions</option>
+          <option value="alert">Alert Rules</option>
+          <option value="allow">Allow Rules</option>
+        </select>
+
         <select v-model="filterType" class="filter-select">
           <option value="all">All Types</option>
           <option value="exec">Exec</option>
@@ -170,57 +215,129 @@ onMounted(fetchRules)
 
       <!-- Rule Groups -->
       <template v-else>
-        <!-- Exec Rules -->
-        <div v-if="groupedRules.exec.length > 0" class="rule-group">
-          <div class="group-header">
-            <div class="group-icon exec">
-              <Terminal :size="16" />
-            </div>
-            <h2 class="group-title">Process Execution Rules</h2>
-            <span class="group-count">{{ groupedRules.exec.length }}</span>
+        <!-- Alert Rules Section -->
+        <div v-if="hasAlertRules" class="rules-section">
+          <div class="section-header alert">
+            <Shield :size="18" />
+            <h2>Alert Rules</h2>
+            <span class="section-badge">{{ stats.alert }}</span>
           </div>
-          <div class="group-content">
-            <RuleCard
-              v-for="rule in groupedRules.exec"
-              :key="rule.name"
-              :rule="rule"
-            />
+
+          <!-- Exec Alert Rules -->
+          <div v-if="groupedRules.alert.exec.length > 0" class="rule-group">
+            <div class="group-header">
+              <div class="group-icon exec">
+                <Terminal :size="16" />
+              </div>
+              <h3 class="group-title">Process Execution</h3>
+              <span class="group-count">{{ groupedRules.alert.exec.length }}</span>
+            </div>
+            <div class="group-content">
+              <RuleCard
+                v-for="rule in groupedRules.alert.exec"
+                :key="rule.name"
+                :rule="rule"
+              />
+            </div>
+          </div>
+
+          <!-- File Alert Rules -->
+          <div v-if="groupedRules.alert.file.length > 0" class="rule-group">
+            <div class="group-header">
+              <div class="group-icon file">
+                <FileText :size="16" />
+              </div>
+              <h3 class="group-title">File Access</h3>
+              <span class="group-count">{{ groupedRules.alert.file.length }}</span>
+            </div>
+            <div class="group-content">
+              <RuleCard
+                v-for="rule in groupedRules.alert.file"
+                :key="rule.name"
+                :rule="rule"
+              />
+            </div>
+          </div>
+
+          <!-- Network Alert Rules -->
+          <div v-if="groupedRules.alert.connect.length > 0" class="rule-group">
+            <div class="group-header">
+              <div class="group-icon connect">
+                <Globe :size="16" />
+              </div>
+              <h3 class="group-title">Network Connection</h3>
+              <span class="group-count">{{ groupedRules.alert.connect.length }}</span>
+            </div>
+            <div class="group-content">
+              <RuleCard
+                v-for="rule in groupedRules.alert.connect"
+                :key="rule.name"
+                :rule="rule"
+              />
+            </div>
           </div>
         </div>
 
-        <!-- File Rules -->
-        <div v-if="groupedRules.file.length > 0" class="rule-group">
-          <div class="group-header">
-            <div class="group-icon file">
-              <FileText :size="16" />
-            </div>
-            <h2 class="group-title">File Access Rules</h2>
-            <span class="group-count">{{ groupedRules.file.length }}</span>
+        <!-- Allow Rules Section -->
+        <div v-if="hasAllowRules" class="rules-section">
+          <div class="section-header allow">
+            <ShieldCheck :size="18" />
+            <h2>Allow Rules (Whitelist)</h2>
+            <span class="section-badge">{{ stats.allow }}</span>
           </div>
-          <div class="group-content">
-            <RuleCard
-              v-for="rule in groupedRules.file"
-              :key="rule.name"
-              :rule="rule"
-            />
-          </div>
-        </div>
 
-        <!-- Network Rules -->
-        <div v-if="groupedRules.connect.length > 0" class="rule-group">
-          <div class="group-header">
-            <div class="group-icon connect">
-              <Globe :size="16" />
+          <!-- Exec Allow Rules -->
+          <div v-if="groupedRules.allow.exec.length > 0" class="rule-group">
+            <div class="group-header">
+              <div class="group-icon exec">
+                <Terminal :size="16" />
+              </div>
+              <h3 class="group-title">Process Execution</h3>
+              <span class="group-count">{{ groupedRules.allow.exec.length }}</span>
             </div>
-            <h2 class="group-title">Network Connection Rules</h2>
-            <span class="group-count">{{ groupedRules.connect.length }}</span>
+            <div class="group-content">
+              <RuleCard
+                v-for="rule in groupedRules.allow.exec"
+                :key="rule.name"
+                :rule="rule"
+              />
+            </div>
           </div>
-          <div class="group-content">
-            <RuleCard
-              v-for="rule in groupedRules.connect"
-              :key="rule.name"
-              :rule="rule"
-            />
+
+          <!-- File Allow Rules -->
+          <div v-if="groupedRules.allow.file.length > 0" class="rule-group">
+            <div class="group-header">
+              <div class="group-icon file">
+                <FileText :size="16" />
+              </div>
+              <h3 class="group-title">File Access</h3>
+              <span class="group-count">{{ groupedRules.allow.file.length }}</span>
+            </div>
+            <div class="group-content">
+              <RuleCard
+                v-for="rule in groupedRules.allow.file"
+                :key="rule.name"
+                :rule="rule"
+              />
+            </div>
+          </div>
+
+          <!-- Network Allow Rules -->
+          <div v-if="groupedRules.allow.connect.length > 0" class="rule-group">
+            <div class="group-header">
+              <div class="group-icon connect">
+                <Globe :size="16" />
+              </div>
+              <h3 class="group-title">Network Connection</h3>
+              <span class="group-count">{{ groupedRules.allow.connect.length }}</span>
+            </div>
+            <div class="group-content">
+              <RuleCard
+                v-for="rule in groupedRules.allow.connect"
+                :key="rule.name"
+                :rule="rule"
+              />
+            </div>
           </div>
         </div>
       </template>
@@ -284,6 +401,8 @@ onMounted(fetchRules)
   border: 1px solid var(--border-subtle);
 }
 
+.stat-item.alert .stat-icon { color: var(--status-critical); }
+.stat-item.allow .stat-icon { color: var(--status-safe); }
 .stat-icon.exec { color: var(--status-info); }
 .stat-icon.file { color: var(--status-safe); }
 .stat-icon.connect { color: var(--status-warning); }
@@ -518,5 +637,47 @@ onMounted(fetchRules)
   flex-direction: column;
   gap: 8px;
   padding: 16px;
+}
+
+/* Rules Sections */
+.rules-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+}
+
+.section-header.alert {
+  background: var(--status-critical-dim);
+  color: var(--status-critical);
+}
+
+.section-header.allow {
+  background: var(--status-safe-dim);
+  color: var(--status-safe);
+}
+
+.section-header h2 {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.section-badge {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
 }
 </style>

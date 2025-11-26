@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Check, X, ChevronDown, ChevronRight, Search, Filter } from 'lucide-vue-next'
-import type { GeneratedRule } from '../../lib/api'
+import { Check, X, ChevronDown, ChevronRight, Search, Filter, Terminal, FileText, Globe } from 'lucide-vue-next'
+import type { Rule } from '../../lib/api'
 
 const props = defineProps<{
-  rules: GeneratedRule[]
+  rules: Rule[]
 }>()
 
 defineEmits<{
@@ -12,7 +12,6 @@ defineEmits<{
   cancel: []
 }>()
 
-// Local selection state
 const selectedRules = ref<Set<number>>(new Set(
   props.rules.map((_, i) => i).filter(i => props.rules[i].selected)
 ))
@@ -20,12 +19,18 @@ const expandedRules = ref<Set<number>>(new Set())
 const searchQuery = ref('')
 const filterType = ref<string>('all')
 
-// Filtered rules with index
+const getRuleType = (rule: Rule): string => {
+  if (rule.type) return rule.type
+  const name = rule.name.toLowerCase()
+  if (name.includes('file') || name.includes('access')) return 'file'
+  if (name.includes('port') || name.includes('connect')) return 'connect'
+  return 'exec'
+}
+
 const filteredRulesWithIndex = computed(() => {
   return props.rules
     .map((rule, index) => ({ rule, index }))
     .filter(({ rule }) => {
-      // Search filter
       if (searchQuery.value.trim()) {
         const query = searchQuery.value.toLowerCase()
         if (!rule.name.toLowerCase().includes(query) &&
@@ -33,21 +38,28 @@ const filteredRulesWithIndex = computed(() => {
           return false
         }
       }
-      // Type filter (based on name pattern)
       if (filterType.value !== 'all') {
         const type = getRuleType(rule)
         if (type !== filterType.value) return false
       }
       return true
     })
+    .sort((a, b) => {
+      const typeOrder = { exec: 0, file: 1, connect: 2 }
+      const typeA = getRuleType(a.rule)
+      const typeB = getRuleType(b.rule)
+      return (typeOrder[typeA as keyof typeof typeOrder] ?? 3) - (typeOrder[typeB as keyof typeof typeOrder] ?? 3)
+    })
 })
 
-const getRuleType = (rule: GeneratedRule): string => {
-  const name = rule.name.toLowerCase()
-  if (name.includes('exec') || name.includes('allow')) return 'exec'
-  if (name.includes('file') || name.includes('access')) return 'file'
-  if (name.includes('port') || name.includes('connect')) return 'connect'
-  return 'exec'
+const getTypeIcon = (rule: Rule) => {
+  const type = getRuleType(rule)
+  switch (type) {
+    case 'exec': return Terminal
+    case 'file': return FileText
+    case 'connect': return Globe
+    default: return Terminal
+  }
 }
 
 const toggleRule = (index: number) => {
@@ -56,7 +68,7 @@ const toggleRule = (index: number) => {
   } else {
     selectedRules.value.add(index)
   }
-  selectedRules.value = new Set(selectedRules.value) // Trigger reactivity
+  selectedRules.value = new Set(selectedRules.value)
 }
 
 const toggleExpand = (index: number) => {
@@ -131,11 +143,14 @@ const selectedCount = computed(() => selectedRules.value.size)
           <div class="rule-checkbox" :class="{ checked: selectedRules.has(index) }">
             <Check v-if="selectedRules.has(index)" :size="12" />
           </div>
+          <div class="rule-type-icon" :class="getRuleType(rule)">
+            <component :is="getTypeIcon(rule)" :size="14" />
+          </div>
           <div class="rule-info">
             <span class="rule-name">{{ rule.name }}</span>
             <span class="rule-desc">{{ rule.description }}</span>
           </div>
-          <span class="rule-badge">{{ getRuleType(rule).toUpperCase() }}</span>
+          <span class="rule-badge" :class="getRuleType(rule)">{{ getRuleType(rule).toUpperCase() }}</span>
           <button class="expand-btn" @click.stop="toggleExpand(index)">
             <ChevronDown v-if="expandedRules.has(index)" :size="16" />
             <ChevronRight v-else :size="16" />
@@ -356,14 +371,52 @@ const selectedCount = computed(() => selectedRules.value.size)
   white-space: nowrap;
 }
 
+.rule-type-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.rule-type-icon.exec {
+  background: var(--status-info-dim);
+  color: var(--status-info);
+}
+
+.rule-type-icon.file {
+  background: var(--status-safe-dim);
+  color: var(--status-safe);
+}
+
+.rule-type-icon.connect {
+  background: var(--status-warning-dim);
+  color: var(--status-warning);
+}
+
 .rule-badge {
   padding: 4px 8px;
-  background: var(--bg-overlay);
   border-radius: var(--radius-sm);
   font-size: 10px;
   font-weight: 600;
-  color: var(--text-secondary);
   flex-shrink: 0;
+}
+
+.rule-badge.exec {
+  background: var(--status-info-dim);
+  color: var(--status-info);
+}
+
+.rule-badge.file {
+  background: var(--status-safe-dim);
+  color: var(--status-safe);
+}
+
+.rule-badge.connect {
+  background: var(--status-warning-dim);
+  color: var(--status-warning);
 }
 
 .expand-btn {

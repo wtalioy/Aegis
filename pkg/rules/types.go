@@ -6,10 +6,25 @@ import (
 
 type MatchType string
 
+type ActionType string
+
+const (
+	ActionAllow ActionType = "allow"
+	ActionAlert ActionType = "alert"
+)
+
 const (
 	MatchTypeExact    MatchType = "exact"
 	MatchTypeContains MatchType = "contains"
 	MatchTypePrefix   MatchType = "prefix"
+)
+
+type RuleType string
+
+const (
+	RuleTypeExec    RuleType = "exec"
+	RuleTypeFile    RuleType = "file"
+	RuleTypeConnect RuleType = "connect"
 )
 
 type Rule struct {
@@ -17,7 +32,21 @@ type Rule struct {
 	Description string         `yaml:"description"`
 	Severity    string         `yaml:"severity"`
 	Match       MatchCondition `yaml:"match"`
-	Action      string         `yaml:"action"`
+	Action      ActionType     `yaml:"action"`
+	Type        RuleType       `yaml:"type,omitempty"`
+}
+
+func (r *Rule) DeriveType() RuleType {
+	if r.Type != "" {
+		return r.Type
+	}
+	if r.Match.Filename != "" || r.Match.FilePath != "" {
+		return RuleTypeFile
+	}
+	if r.Match.DestPort != 0 || r.Match.DestIP != "" {
+		return RuleTypeConnect
+	}
+	return RuleTypeExec
 }
 
 type MatchCondition struct {

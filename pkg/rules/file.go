@@ -1,9 +1,12 @@
 package rules
 
-import (
-	"strconv"
-	"strings"
-)
+import "strings"
+
+type fileEvent struct {
+	filename string
+	pid      uint32
+	cgroupID uint64
+}
 
 type fileMatcher struct {
 	exactFilenameRules map[string][]*Rule
@@ -15,69 +18,43 @@ func newFileMatcher(rules []Rule) *fileMatcher {
 		exactFilenameRules: make(map[string][]*Rule),
 		filepathRules:      make([]*Rule, 0),
 	}
-	matcher.indexRules(rules)
-	return matcher
-}
-
-func (m *fileMatcher) indexRules(rules []Rule) {
 	for i := range rules {
 		rule := &rules[i]
 		if rule.Match.Filename != "" {
-			m.exactFilenameRules[rule.Match.Filename] = append(
-				m.exactFilenameRules[rule.Match.Filename], rule)
+			matcher.exactFilenameRules[rule.Match.Filename] = append(
+				matcher.exactFilenameRules[rule.Match.Filename], rule)
 		}
 		if rule.Match.FilePath != "" {
-			m.filepathRules = append(m.filepathRules, rule)
+			matcher.filepathRules = append(matcher.filepathRules, rule)
 		}
 	}
+	return matcher
 }
 
-func (m *fileMatcher) Match(filename string, pid uint32, cgroupID uint64) (bool, *Rule) {
-	if match := m.matchFromExact(filename, pid, cgroupID); match != nil {
-		return true, match
-	}
-	if match := m.matchFromPaths(filename, pid, cgroupID); match != nil {
-		return true, match
-	}
-	return false, nil
+func (m *fileMatcher) Match(filename string, pid uint32, cgroupID uint64) (matched bool, rule *Rule, allowed bool) {
+	event := fileEvent{filename: filename, pid: pid, cgroupID: cgroupID}
+	return filterRulesByAction(m.getCandidateRules(filename), m.matchRule, event)
 }
 
-func (m *fileMatcher) matchFromExact(filename string, pid uint32, cgroupID uint64) *Rule {
+func (m *fileMatcher) getCandidateRules(filename string) []*Rule {
+	var candidates []*Rule
 	if rules, ok := m.exactFilenameRules[filename]; ok {
-		return m.findMatch(rules, filename, pid, cgroupID)
+		candidates = append(candidates, rules...)
 	}
-	return nil
+	candidates = append(candidates, m.filepathRules...)
+	return candidates
 }
 
-func (m *fileMatcher) matchFromPaths(filename string, pid uint32, cgroupID uint64) *Rule {
-	return m.findMatch(m.filepathRules, filename, pid, cgroupID)
-}
-
-func (m *fileMatcher) findMatch(rules []*Rule, filename string, pid uint32, cgroupID uint64) *Rule {
-	for _, rule := range rules {
-		if m.matchRule(rule, filename, pid, cgroupID) {
-			return rule
-		}
-	}
-	return nil
-}
-
-func (m *fileMatcher) matchRule(rule *Rule, filename string, pid uint32, cgroupID uint64) bool {
+func (m *fileMatcher) matchRule(rule *Rule, event fileEvent) bool {
 	match := rule.Match
 	if match.Filename == "" && match.FilePath == "" {
 		return false
 	}
-	if match.Filename != "" && filename != match.Filename {
+	if match.Filename != "" && event.filename != match.Filename {
 		return false
 	}
-	if match.FilePath != "" && !strings.HasPrefix(filename, match.FilePath) {
+	if match.FilePath != "" && !strings.HasPrefix(event.filename, match.FilePath) {
 		return false
 	}
-	if match.CgroupID != "" && strconv.FormatUint(cgroupID, 10) != match.CgroupID {
-		return false
-	}
-	if match.PID != 0 && pid != match.PID {
-		return false
-	}
-	return true
+	return matchCgroupID(match.CgroupID, event.cgroupID) && matchPID(match.PID, event.pid)
 }

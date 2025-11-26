@@ -1,10 +1,6 @@
 package rules
 
-import (
-	"strconv"
-
-	"eulerguard/pkg/events"
-)
+import "eulerguard/pkg/events"
 
 type execMatcher struct {
 	exactProcessNameRules map[string][]*Rule
@@ -18,22 +14,17 @@ func newExecMatcher(rules []Rule) *execMatcher {
 		exactParentNameRules:  make(map[string][]*Rule),
 		partialMatchRules:     make([]*Rule, 0),
 	}
-	matcher.indexRules(rules)
+	for i := range rules {
+		rule := &rules[i]
+		setDefaultMatchTypes(rule)
+		if hasExecCriteria(rule) {
+			matcher.indexRule(rule)
+		}
+	}
 	return matcher
 }
 
-func (m *execMatcher) indexRules(rules []Rule) {
-	for i := range rules {
-		rule := &rules[i]
-		m.setDefaultMatchTypes(rule)
-		if !m.hasExecCriteria(rule) {
-			continue
-		}
-		m.indexExecRule(rule)
-	}
-}
-
-func (m *execMatcher) setDefaultMatchTypes(rule *Rule) {
+func setDefaultMatchTypes(rule *Rule) {
 	if rule.Match.ProcessName != "" && rule.Match.ProcessNameType == "" {
 		rule.Match.ProcessNameType = MatchTypeContains
 	}
@@ -42,15 +33,13 @@ func (m *execMatcher) setDefaultMatchTypes(rule *Rule) {
 	}
 }
 
-func (m *execMatcher) hasExecCriteria(rule *Rule) bool {
-	match := rule.Match
-	return match.ProcessName != "" || match.ParentName != "" ||
-		match.PID != 0 || match.PPID != 0
+func hasExecCriteria(rule *Rule) bool {
+	m := rule.Match
+	return m.ProcessName != "" || m.ParentName != "" || m.PID != 0 || m.PPID != 0
 }
 
-func (m *execMatcher) indexExecRule(rule *Rule) {
+func (m *execMatcher) indexRule(rule *Rule) {
 	indexed := false
-
 	if rule.Match.ProcessName != "" && rule.Match.ProcessNameType == MatchTypeExact {
 		m.exactProcessNameRules[rule.Match.ProcessName] = append(
 			m.exactProcessNameRules[rule.Match.ProcessName], rule)
@@ -61,59 +50,57 @@ func (m *execMatcher) indexExecRule(rule *Rule) {
 			m.exactParentNameRules[rule.Match.ParentName], rule)
 		indexed = true
 	}
-
-	needsPartialMatch := !indexed ||
-		rule.Match.ProcessNameType == MatchTypeContains ||
-		rule.Match.ParentNameType == MatchTypeContains
-
-	if needsPartialMatch {
+	if !indexed || rule.Match.ProcessNameType == MatchTypeContains || rule.Match.ParentNameType == MatchTypeContains {
 		m.partialMatchRules = append(m.partialMatchRules, rule)
 	}
 }
 
-func (m *execMatcher) Match(event events.ProcessedEvent) []Alert {
+func (m *execMatcher) Match(event events.ProcessedEvent) (matched bool, rule *Rule, allowed bool) {
+	return filterRulesByAction(m.getCandidateRules(event), m.matchRuleWrapper, event)
+}
+
+func (m *execMatcher) matchRuleWrapper(rule *Rule, event events.ProcessedEvent) bool {
+	return m.matchRule(rule, event)
+}
+
+func (m *execMatcher) CollectAlerts(event events.ProcessedEvent) []Alert {
+	candidates := m.getCandidateRules(event)
+	for _, rule := range candidates {
+		if rule.Action == ActionAllow && m.matchRule(rule, event) {
+			return nil
+		}
+	}
+	seen := make(map[*Rule]bool)
 	var alerts []Alert
-	checked := make(map[*Rule]bool)
-
-	if rules, ok := m.exactProcessNameRules[event.Process]; ok {
-		m.applyRules(rules, event, checked, &alerts)
+	for _, rule := range candidates {
+		if seen[rule] || rule.Action == ActionAllow {
+			continue
+		}
+		seen[rule] = true
+		if m.matchRule(rule, event) {
+			alerts = append(alerts, Alert{Rule: *rule, Event: event, Message: rule.Description})
+		}
 	}
-	if rules, ok := m.exactParentNameRules[event.Parent]; ok {
-		m.applyRules(rules, event, checked, &alerts)
-	}
-
-	m.applyRules(m.partialMatchRules, event, checked, &alerts)
 	return alerts
 }
 
-func (m *execMatcher) applyRules(rules []*Rule, event events.ProcessedEvent, checked map[*Rule]bool, alerts *[]Alert) {
-	for _, rule := range rules {
-		if checked[rule] {
-			continue
-		}
-		if m.matchRule(rule, event) {
-			*alerts = append(*alerts, Alert{
-				Rule:    *rule,
-				Event:   event,
-				Message: rule.Description,
-			})
-			checked[rule] = true
-		}
+func (m *execMatcher) getCandidateRules(event events.ProcessedEvent) []*Rule {
+	var candidates []*Rule
+	if rules, ok := m.exactProcessNameRules[event.Process]; ok {
+		candidates = append(candidates, rules...)
 	}
+	if rules, ok := m.exactParentNameRules[event.Parent]; ok {
+		candidates = append(candidates, rules...)
+	}
+	candidates = append(candidates, m.partialMatchRules...)
+	return candidates
 }
 
 func (m *execMatcher) matchRule(rule *Rule, event events.ProcessedEvent) bool {
 	match := rule.Match
 	return (match.ProcessName == "" || matchString(event.Process, match.ProcessName, match.ProcessNameType)) &&
 		(match.ParentName == "" || matchString(event.Parent, match.ParentName, match.ParentNameType)) &&
-		(match.PID == 0 || event.Event.PID == match.PID) &&
+		matchPID(match.PID, event.Event.PID) &&
 		(match.PPID == 0 || event.Event.PPID == match.PPID) &&
 		matchCgroupID(match.CgroupID, event.Event.CgroupID)
-}
-
-func matchCgroupID(pattern string, cgroupID uint64) bool {
-	if pattern == "" {
-		return true
-	}
-	return strconv.FormatUint(cgroupID, 10) == pattern
 }
