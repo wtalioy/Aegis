@@ -6,6 +6,7 @@ import {
   Radio,
   AlertTriangle,
   FileCode,
+  Boxes,
   Brain,
   Cpu,
   Shield
@@ -27,6 +28,7 @@ const navItems: NavItem[] = [
   { icon: Radio, label: 'Live Stream', route: '/stream', section: 'guard' },
   { icon: AlertTriangle, label: 'Alerts', route: '/alerts', section: 'guard' },
   { icon: FileCode, label: 'Rules', route: '/rules', section: 'guard' },
+  { icon: Boxes, label: 'Workloads', route: '/workloads', section: 'guard' },
   { icon: Brain, label: 'Profiler', route: '/profiler', section: 'guard' },
   { icon: Cpu, label: 'Kernel X-Ray', route: '/kernel', section: 'learn' },
 ]

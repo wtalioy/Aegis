@@ -1,8 +1,7 @@
-package proctree
+package proc
 
 import (
 	"fmt"
-	"hash/fnv"
 	"log"
 	"os"
 	"strconv"
@@ -65,9 +64,15 @@ func (pt *ProcessTree) seedFromProc() error {
 			continue
 		}
 
-		info, err := pt.readProcInfo(uint32(pid))
+		info, cgroupPath, err := pt.readProcInfo(uint32(pid))
 		if err != nil {
 			continue
+		}
+
+		// Pre-populate the cgroup path cache for this long-running process
+		// This ensures we have paths cached before short-lived processes start
+		if info.CgroupID != 0 && cgroupPath != "" {
+			cgroupPathCache.Store(info.CgroupID, cgroupPath)
 		}
 
 		pt.processes.Store(uint32(pid), info)
@@ -80,10 +85,10 @@ func (pt *ProcessTree) seedFromProc() error {
 	return nil
 }
 
-func (pt *ProcessTree) readProcInfo(pid uint32) (*ProcessInfo, error) {
+func (pt *ProcessTree) readProcInfo(pid uint32) (*ProcessInfo, string, error) {
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// pid (comm) state ppid ...
@@ -91,24 +96,24 @@ func (pt *ProcessTree) readProcInfo(pid uint32) (*ProcessInfo, error) {
 
 	commEnd := strings.LastIndex(str, ")")
 	if commEnd == -1 {
-		return nil, fmt.Errorf("invalid stat format")
+		return nil, "", fmt.Errorf("invalid stat format")
 	}
 	commStart := strings.Index(str, "(")
 	if commStart == -1 {
-		return nil, fmt.Errorf("invalid stat format")
+		return nil, "", fmt.Errorf("invalid stat format")
 	}
 	comm := str[commStart+1 : commEnd]
 
 	fields := strings.Fields(str[commEnd+1:])
 	if len(fields) < 2 {
-		return nil, fmt.Errorf("invalid stat format")
+		return nil, "", fmt.Errorf("invalid stat format")
 	}
 	ppid, err := strconv.ParseUint(fields[1], 10, 32)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	cgroupID := pt.readCgroupID(pid)
+	cgroupID, cgroupPath := readCgroupIDAndPath(pid)
 
 	return &ProcessInfo{
 		PID:       pid,
@@ -116,45 +121,7 @@ func (pt *ProcessTree) readProcInfo(pid uint32) (*ProcessInfo, error) {
 		CgroupID:  cgroupID,
 		Comm:      comm,
 		Timestamp: time.Now(),
-	}, nil
-}
-
-func (pt *ProcessTree) readCgroupID(pid uint32) uint64 {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", pid))
-	if err != nil {
-		return 1 // Default to host
-	}
-
-	lines := strings.Split(string(data), "\n")
-
-	// cgroup v2 format: 0::/path
-	for _, line := range lines {
-		if after, ok := strings.CutPrefix(line, "0::"); ok {
-			cgroupPath := after
-			if cgroupPath == "/" || cgroupPath == "" {
-				return 1 // Host process
-			}
-			return hashString(cgroupPath)
-		}
-	}
-
-	// If no cgroup v2, try v1 (look for docker/containerd patterns)
-	for _, line := range lines {
-		if strings.Contains(line, "/docker/") || strings.Contains(line, "/containerd/") {
-			parts := strings.SplitN(line, ":", 3)
-			if len(parts) == 3 {
-				return hashString(parts[2])
-			}
-		}
-	}
-
-	return 1
-}
-
-func hashString(s string) uint64 {
-	h := fnv.New64a()
-	h.Write([]byte(s))
-	return h.Sum64()
+	}, cgroupPath, nil
 }
 
 func (pt *ProcessTree) AddProcess(pid, ppid uint32, cgroupID uint64, comm string) {
@@ -217,7 +184,7 @@ func (pt *ProcessTree) GetAncestors(pid uint32) []*ProcessInfo {
 		}
 		chain = append(chain, info)
 
-		// Stop at container boundary (cgroup change)
+		// Stop at workload boundary (cgroup change)
 		if len(chain) > 1 && info.CgroupID != chain[0].CgroupID {
 			break
 		}

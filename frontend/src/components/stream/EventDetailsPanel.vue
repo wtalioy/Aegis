@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { X, Copy, Search, Terminal, Globe, FileText, Container } from 'lucide-vue-next'
+import { X, Copy, Search, Terminal, Globe, FileText } from 'lucide-vue-next'
 import type { StreamEvent, ProcessInfo } from '../../lib/api'
 import { getAncestors } from '../../lib/api'
 
@@ -93,15 +93,6 @@ watch(() => props.event, async (newEvent) => {
             <div class="detail-row">
               <span class="detail-label">Cgroup ID</span>
               <span class="detail-value font-mono">{{ event.cgroupId }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Container</span>
-              <span class="detail-value">
-                <span v-if="event.inContainer" class="container-yes">
-                  <Container :size="12" /> Yes
-                </span>
-                <span v-else class="container-no">No</span>
-              </span>
             </div>
             <div class="detail-row">
               <span class="detail-label">Timestamp</span>

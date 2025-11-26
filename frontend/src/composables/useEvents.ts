@@ -9,7 +9,6 @@ export interface ExecEvent {
     cgroupId: string
     comm: string
     parentComm: string
-    inContainer: boolean
 }
 
 export interface ConnectEvent {
@@ -20,7 +19,6 @@ export interface ConnectEvent {
     family: number
     port: number
     addr: string
-    inContainer: boolean
 }
 
 export interface FileEvent {
@@ -30,7 +28,6 @@ export interface FileEvent {
     cgroupId: string
     flags: number
     filename: string
-    inContainer: boolean
 }
 
 export type EulerGuardEvent = ExecEvent | ConnectEvent | FileEvent

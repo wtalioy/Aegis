@@ -45,6 +45,7 @@ const formatTime = (timestamp: number) => {
       <div class="alert-process">
         <code>{{ alert.processName }}</code>
         <span class="alert-pid">PID {{ alert.pid }}</span>
+        <span v-if="alert.cgroupId" class="alert-cgroup font-mono">cg:{{ alert.cgroupId.slice(0, 8) }}</span>
       </div>
     </div>
   </div>
@@ -158,6 +159,14 @@ const formatTime = (timestamp: number) => {
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 11px;
+}
+
+.alert-cgroup {
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 1px 4px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
 }
 
 /* New alert pulse animation */

@@ -1,21 +1,21 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Handle, Position } from '@vue-flow/core'
-import type { NodeProps } from '@vue-flow/core'
-import { Box, AlertTriangle, Container } from 'lucide-vue-next'
+import { Box, AlertTriangle } from 'lucide-vue-next'
 
 export interface ProcessNodeData {
   pid: number
   ppid: number
   comm: string
   timestamp: number
+  cgroupId?: string
   isTarget?: boolean
   isAlertSource?: boolean
-  inContainer?: boolean
   severity?: 'high' | 'warning' | 'info'
 }
 
-const props = defineProps<NodeProps<ProcessNodeData>>()
+const props = defineProps<{
+  data: ProcessNodeData
+}>()
 
 const formatTime = (timestamp: number) => {
   if (!timestamp) return ''
@@ -32,17 +32,33 @@ const nodeClass = computed(() => ({
   'is-alert-source': props.data.isAlertSource,
   [`severity-${props.data.severity}`]: props.data.severity
 }))
+
+// Generate a consistent color from cgroup ID for workload indicator
+const workloadColor = computed(() => {
+  if (!props.data.cgroupId || props.data.cgroupId === '0') return null
+  let hash = 0
+  for (let i = 0; i < props.data.cgroupId.length; i++) {
+    hash = props.data.cgroupId.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = Math.abs(hash % 360)
+  return `hsl(${hue}, 60%, 50%)`
+})
+
+// Short cgroup ID for display
+const shortCgroupId = computed(() => {
+  if (!props.data.cgroupId) return ''
+  const id = props.data.cgroupId
+  return id.length > 8 ? id.slice(0, 8) + '…' : id
+})
 </script>
 
 <template>
   <div class="process-node" :class="nodeClass">
-    <!-- Input handle (from parent) -->
-    <Handle type="target" :position="Position.Top" class="node-handle" />
+    <div v-if="workloadColor" class="workload-indicator" :style="{ borderColor: workloadColor }"></div>
     
     <div class="node-header">
       <div class="node-icon">
         <AlertTriangle v-if="data.isAlertSource" :size="14" class="alert-icon" />
-        <Container v-else-if="data.inContainer" :size="14" class="container-icon" />
         <Box v-else :size="14" />
       </div>
       <span class="node-comm">{{ data.comm }}</span>
@@ -64,31 +80,24 @@ const nodeClass = computed(() => ({
         <span class="meta-label">Time:</span>
         <span class="meta-value">{{ formatTime(data.timestamp) }}</span>
       </div>
+      <div v-if="shortCgroupId" class="meta-row">
+        <span class="meta-label">Cgroup:</span>
+        <span class="meta-value">{{ shortCgroupId }}</span>
+      </div>
     </div>
-    
-    <div v-if="data.inContainer" class="container-badge">
-      <Container :size="10" />
-      <span>Container</span>
-    </div>
-    
-    <!-- Output handle (to children) -->
-    <Handle type="source" :position="Position.Bottom" class="node-handle" />
   </div>
 </template>
 
 <style scoped>
 .process-node {
+  position: relative;
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   padding: 12px 16px;
-  min-width: 160px;
-  transition: all 0.2s ease;
-}
-
-.process-node:hover {
-  background: var(--bg-overlay);
-  border-color: var(--border-focus);
+  min-width: 200px;
+  max-width: 280px;
+  user-select: none;
 }
 
 .process-node.is-target {
@@ -110,6 +119,16 @@ const nodeClass = computed(() => ({
   box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
 }
 
+.workload-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-top: 3px solid;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
 .node-header {
   display: flex;
   align-items: center;
@@ -127,8 +146,8 @@ const nodeClass = computed(() => ({
   color: var(--status-critical);
 }
 
-.node-icon .container-icon {
-  color: var(--status-info);
+.process-node.severity-warning .node-icon .alert-icon {
+  color: var(--status-warning);
 }
 
 .node-comm {
@@ -183,29 +202,4 @@ const nodeClass = computed(() => ({
   font-family: var(--font-mono);
   color: var(--text-secondary);
 }
-
-.container-badge {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-  padding: 4px 8px;
-  background: var(--status-info-dim);
-  border-radius: var(--radius-sm);
-  font-size: 10px;
-  color: var(--status-info);
-}
-
-.node-handle {
-  width: 8px;
-  height: 8px;
-  background: var(--bg-overlay);
-  border: 2px solid var(--border-default);
-}
-
-.node-handle:hover {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-}
 </style>
-

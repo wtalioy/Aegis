@@ -2,7 +2,7 @@ package output
 
 import (
 	"eulerguard/pkg/events"
-	"eulerguard/pkg/proctree"
+	"eulerguard/pkg/proc"
 	"eulerguard/pkg/rules"
 	"time"
 )
@@ -32,7 +32,7 @@ func (p *Printer) PrintAlert(alert rules.Alert) {
 	p.emitColoredAlert(alert.Rule.Severity, alertText)
 }
 
-func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proctree.ProcessInfo, rule *rules.Rule, filename string) {
+func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proc.ProcessInfo, rule *rules.Rule, filename string) {
 	if p.jsonLines {
 		p.writeJSON(map[string]any{
 			"type":        "file_access_alert",
@@ -55,7 +55,7 @@ func (p *Printer) PrintFileOpenAlert(ev *events.FileOpenEvent, chain []*proctree
 	p.emitColoredAlert(rule.Severity, alertText)
 }
 
-func (p *Printer) PrintConnectAlert(ev *events.ConnectEvent, chain []*proctree.ProcessInfo, rule *rules.Rule) {
+func (p *Printer) PrintConnectAlert(ev *events.ConnectEvent, chain []*proc.ProcessInfo, rule *rules.Rule) {
 	destAddr := formatAddress(ev)
 
 	if p.jsonLines {

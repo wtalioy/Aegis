@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"eulerguard/pkg/events"
-	"eulerguard/pkg/proctree"
+	"eulerguard/pkg/proc"
 	"eulerguard/pkg/profiler"
 	"eulerguard/pkg/rules"
 	"eulerguard/pkg/utils"
+	"eulerguard/pkg/workload"
 )
 
 type EventEmitter interface {
@@ -23,12 +24,13 @@ type NoopEmitter struct{}
 func (n *NoopEmitter) Emit(string, any) {}
 
 type Bridge struct {
-	emitter     EventEmitter
-	stats       *Stats
-	processTree *proctree.ProcessTree
-	ruleEngine  *rules.Engine
-	profiler    *profiler.Profiler
-	mu          sync.RWMutex
+	emitter          EventEmitter
+	stats            *Stats
+	processTree      *proc.ProcessTree
+	ruleEngine       *rules.Engine
+	workloadRegistry *workload.Registry
+	profiler         *profiler.Profiler
+	mu               sync.RWMutex
 }
 
 var _ events.EventHandler = (*Bridge)(nil)
@@ -52,11 +54,17 @@ func (b *Bridge) SetEmitter(emitter EventEmitter) {
 	b.emitter = emitter
 }
 
-func (b *Bridge) SetRuleEngine(pt *proctree.ProcessTree, re *rules.Engine) {
+func (b *Bridge) SetRuleEngine(pt *proc.ProcessTree, re *rules.Engine) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.processTree = pt
 	b.ruleEngine = re
+}
+
+func (b *Bridge) SetWorkloadRegistry(wr *workload.Registry) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.workloadRegistry = wr
 }
 
 func (b *Bridge) SetProfiler(p *profiler.Profiler) {
@@ -115,7 +123,6 @@ func (b *Bridge) HandleExec(ev events.ExecEvent) {
 			ProcessName: comm,
 			ParentName:  pcomm,
 			CgroupID:    strconv.FormatUint(ev.CgroupID, 10),
-			InContainer: ev.CgroupID > 1,
 		})
 	}
 }
@@ -161,7 +168,6 @@ func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 		PID:         ev.PID,
 		ProcessName: processName,
 		CgroupID:    strconv.FormatUint(ev.CgroupID, 10),
-		InContainer: ev.CgroupID > 1,
 	})
 }
 
@@ -206,12 +212,19 @@ func (b *Bridge) HandleConnect(ev events.ConnectEvent) {
 		PID:         ev.PID,
 		ProcessName: processName,
 		CgroupID:    strconv.FormatUint(ev.CgroupID, 10),
-		InContainer: ev.CgroupID > 1,
 	})
 }
 
 func (b *Bridge) emitAlert(alert FrontendAlert) {
 	b.stats.AddAlert(alert)
+
+	// Record alert in workload registry for per-workload tracking
+	if b.workloadRegistry != nil {
+		if cgroupID, err := strconv.ParseUint(alert.CgroupID, 10, 64); err == nil {
+			b.workloadRegistry.RecordAlert(cgroupID)
+		}
+	}
+
 	b.emit("alert:new", alert)
 }
 

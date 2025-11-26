@@ -10,6 +10,9 @@ import (
 	"eulerguard/pkg/utils"
 )
 
+// WorkloadCountFunc is a function that returns the current workload count from the registry.
+type WorkloadCountFunc func() int
+
 type Stats struct {
 	execCount    atomic.Int64
 	fileCount    atomic.Int64
@@ -27,10 +30,10 @@ type Stats struct {
 	maxAlerts   int
 	totalAlerts atomic.Int64
 
-	containers   map[uint64]struct{}
-	containersMu sync.RWMutex
-
 	onRateUpdate func(exec, file, net int64)
+
+	// Callback to get workload count from registry
+	workloadCountFn WorkloadCountFunc
 
 	// Event subscribers for SSE streaming
 	eventSubs   map[chan any]struct{}
@@ -39,13 +42,17 @@ type Stats struct {
 
 func NewStats() *Stats {
 	s := &Stats{
-		alerts:     make([]FrontendAlert, 0, 100),
-		maxAlerts:  100,
-		containers: make(map[uint64]struct{}),
-		eventSubs:  make(map[chan any]struct{}),
+		alerts:    make([]FrontendAlert, 0, 100),
+		maxAlerts: 100,
+		eventSubs: make(map[chan any]struct{}),
 	}
 	go s.rateLoop()
 	return s
+}
+
+// SetWorkloadCountFunc sets the callback to get workload count from the registry.
+func (s *Stats) SetWorkloadCountFunc(fn WorkloadCountFunc) {
+	s.workloadCountFn = fn
 }
 
 func (s *Stats) SetRateCallback(fn func(exec, file, net int64)) {
@@ -74,12 +81,6 @@ func (s *Stats) rateLoop() {
 func (s *Stats) RecordExec(ev events.ExecEvent) {
 	s.execCount.Add(1)
 	s.lastSecExec.Add(1)
-
-	if ev.CgroupID > 1 {
-		s.containersMu.Lock()
-		s.containers[ev.CgroupID] = struct{}{}
-		s.containersMu.Unlock()
-	}
 }
 
 func (s *Stats) RecordFile()    { s.fileCount.Add(1); s.lastSecFile.Add(1) }
@@ -121,47 +122,46 @@ func (s *Stats) Alerts() []FrontendAlert {
 	return result
 }
 
-func (s *Stats) ContainerCount() int {
-	s.containersMu.RLock()
-	defer s.containersMu.RUnlock()
-	return len(s.containers)
+// WorkloadCount returns the number of distinct workloads from the registry.
+func (s *Stats) WorkloadCount() int {
+	if s.workloadCountFn != nil {
+		return s.workloadCountFn()
+	}
+	return 0
 }
 
 func ExecToFrontend(ev events.ExecEvent) FrontendExecEvent {
 	return FrontendExecEvent{
-		Type:        "exec",
-		Timestamp:   time.Now().UnixMilli(),
-		PID:         ev.PID,
-		PPID:        ev.PPID,
-		CgroupID:    strconv.FormatUint(ev.CgroupID, 10),
-		Comm:        utils.ExtractCString(ev.Comm[:]),
-		ParentComm:  utils.ExtractCString(ev.PComm[:]),
-		InContainer: ev.CgroupID > 1,
+		Type:       "exec",
+		Timestamp:  time.Now().UnixMilli(),
+		PID:        ev.PID,
+		PPID:       ev.PPID,
+		CgroupID:   strconv.FormatUint(ev.CgroupID, 10),
+		Comm:       utils.ExtractCString(ev.Comm[:]),
+		ParentComm: utils.ExtractCString(ev.PComm[:]),
 	}
 }
 
 func FileToFrontend(ev events.FileOpenEvent, filename string) FrontendFileEvent {
 	return FrontendFileEvent{
-		Type:        "file",
-		Timestamp:   time.Now().UnixMilli(),
-		PID:         ev.PID,
-		CgroupID:    strconv.FormatUint(ev.CgroupID, 10),
-		Flags:       ev.Flags,
-		Filename:    filename,
-		InContainer: ev.CgroupID > 1,
+		Type:      "file",
+		Timestamp: time.Now().UnixMilli(),
+		PID:       ev.PID,
+		CgroupID:  strconv.FormatUint(ev.CgroupID, 10),
+		Flags:     ev.Flags,
+		Filename:  filename,
 	}
 }
 
 func ConnectToFrontend(ev events.ConnectEvent, addr string) FrontendConnectEvent {
 	return FrontendConnectEvent{
-		Type:        "connect",
-		Timestamp:   time.Now().UnixMilli(),
-		PID:         ev.PID,
-		CgroupID:    strconv.FormatUint(ev.CgroupID, 10),
-		Family:      ev.Family,
-		Port:        ev.Port,
-		Addr:        addr,
-		InContainer: ev.CgroupID > 1,
+		Type:      "connect",
+		Timestamp: time.Now().UnixMilli(),
+		PID:       ev.PID,
+		CgroupID:  strconv.FormatUint(ev.CgroupID, 10),
+		Family:    ev.Family,
+		Port:      ev.Port,
+		Addr:      addr,
 	}
 }
 

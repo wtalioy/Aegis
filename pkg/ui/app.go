@@ -7,18 +7,20 @@ import (
 
 	"eulerguard/pkg/config"
 	"eulerguard/pkg/events"
-	"eulerguard/pkg/proctree"
+	"eulerguard/pkg/proc"
 	"eulerguard/pkg/profiler"
 	"eulerguard/pkg/rules"
 	"eulerguard/pkg/tracer"
+	"eulerguard/pkg/workload"
 )
 
 type App struct {
 	ctx  context.Context
 	opts config.Options
 
-	processTree *proctree.ProcessTree
-	ruleEngine  *rules.Engine
+	processTree      *proc.ProcessTree
+	ruleEngine       *rules.Engine
+	workloadRegistry *workload.Registry
 
 	stats  *Stats
 	bridge *Bridge
@@ -70,12 +72,17 @@ func (a *App) Run() error {
 
 	a.processTree = core.ProcessTree
 	a.ruleEngine = core.RuleEngine
+	a.workloadRegistry = core.WorkloadRegistry
+
+	// Wire workload count function to stats
+	a.stats.SetWorkloadCountFunc(core.WorkloadRegistry.Count)
 
 	a.bridge.SetRuleEngine(core.ProcessTree, core.RuleEngine)
+	a.bridge.SetWorkloadRegistry(core.WorkloadRegistry)
 
 	chain := events.NewHandlerChain()
 	chain.Add(a.bridge)
 
 	log.Println("eBPF tracer started")
-	return tracer.EventLoop(core.Reader, chain, core.ProcessTree)
+	return tracer.EventLoop(core.Reader, chain, core.ProcessTree, core.WorkloadRegistry)
 }

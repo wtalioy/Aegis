@@ -20,7 +20,7 @@ const colorClass = computed(() => {
       <component :is="icon" :size="24" />
     </div>
     <div class="stat-content">
-      <div class="stat-value">{{ typeof value === 'number' ? value.toLocaleString() : value }}</div>
+      <div class="stat-value">{{ value }}</div>
       <div class="stat-label">{{ label }}</div>
     </div>
   </div>

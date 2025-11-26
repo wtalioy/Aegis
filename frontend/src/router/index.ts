@@ -25,6 +25,11 @@ const router = createRouter({
       component: () => import('../pages/Rules.vue')
     },
     {
+      path: '/workloads',
+      name: 'workloads',
+      component: () => import('../pages/Workloads.vue')
+    },
+    {
       path: '/profiler',
       name: 'profiler',
       component: () => import('../pages/Profiler.vue')

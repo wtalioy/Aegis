@@ -9,33 +9,36 @@ import (
 	"eulerguard/pkg/config"
 	"eulerguard/pkg/ebpf"
 	"eulerguard/pkg/events"
-	"eulerguard/pkg/proctree"
+	"eulerguard/pkg/proc"
 	"eulerguard/pkg/rules"
 	"eulerguard/pkg/utils"
+	"eulerguard/pkg/workload"
 
 	cebpf "github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 )
 
-// Core contains initialized eBPF components ready for event processing.
 type Core struct {
-	Objs        *ebpf.ExecveObjects
-	Links       []link.Link
-	Reader      *ringbuf.Reader
-	Rules       []rules.Rule
-	RuleEngine  *rules.Engine
-	ProcessTree *proctree.ProcessTree
+	Objs             *ebpf.ExecveObjects
+	Links            []link.Link
+	Reader           *ringbuf.Reader
+	Rules            []rules.Rule
+	RuleEngine       *rules.Engine
+	ProcessTree      *proc.ProcessTree
+	WorkloadRegistry *workload.Registry
 }
 
 func Init(opts config.Options) (*Core, error) {
 	c := &Core{}
 
-	c.ProcessTree = proctree.NewProcessTree(
+	c.ProcessTree = proc.NewProcessTree(
 		opts.ProcessTreeMaxAge,
 		opts.ProcessTreeMaxSize,
 		opts.ProcessTreeMaxChainLength,
 	)
+
+	c.WorkloadRegistry = workload.NewRegistry(1000)
 
 	objs, err := ebpf.LoadExecveObjects(opts.BPFPath, opts.RingBufferSize)
 	if err != nil {
@@ -58,10 +61,8 @@ func Init(opts config.Options) (*Core, error) {
 	}
 	c.Reader = reader
 
-	// Load detection rules
 	c.Rules, c.RuleEngine = LoadRules(opts.RulesPath)
 
-	// Populate monitored paths in BPF map
 	if err := PopulateMonitoredPaths(objs.MonitoredPaths, c.Rules, opts.RulesPath); err != nil {
 		log.Printf("Warning: failed to populate monitored paths: %v", err)
 	}
@@ -105,14 +106,12 @@ func AttachTracepoints(objs *ebpf.ExecveObjects) ([]link.Link, error) {
 	return links, nil
 }
 
-// close all tracepoint links
 func CloseLinks(links []link.Link) {
 	for _, l := range links {
 		_ = l.Close()
 	}
 }
 
-// load detection rules from a YAML file
 func LoadRules(rulesPath string) ([]rules.Rule, *rules.Engine) {
 	loadedRules, err := rules.LoadRules(rulesPath)
 	if err != nil {
@@ -124,7 +123,6 @@ func LoadRules(rulesPath string) ([]rules.Rule, *rules.Engine) {
 	return loadedRules, rules.NewEngine(loadedRules)
 }
 
-// add file paths from rules to BPF map for kernel-side filtering
 func PopulateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath string) error {
 	if bpfMap == nil {
 		return fmt.Errorf("monitored_paths map is nil")
@@ -160,8 +158,7 @@ func PopulateMonitoredPaths(bpfMap *cebpf.Map, ruleList []rules.Rule, rulesPath 
 	return nil
 }
 
-// read events from the ring buffer and dispatch them to handlers
-func EventLoop(reader *ringbuf.Reader, handlers *events.HandlerChain, processTree *proctree.ProcessTree) error {
+func EventLoop(reader *ringbuf.Reader, handlers *events.HandlerChain, processTree *proc.ProcessTree, registry *workload.Registry) error {
 	for {
 		record, err := reader.Read()
 		if errors.Is(err, ringbuf.ErrClosed) {
@@ -178,11 +175,11 @@ func EventLoop(reader *ringbuf.Reader, handlers *events.HandlerChain, processTre
 			continue
 		}
 
-		DispatchEvent(record.RawSample, handlers, processTree)
+		DispatchEvent(record.RawSample, handlers, processTree, registry)
 	}
 }
 
-func DispatchEvent(data []byte, handlers *events.HandlerChain, processTree *proctree.ProcessTree) {
+func DispatchEvent(data []byte, handlers *events.HandlerChain, processTree *proc.ProcessTree, registry *workload.Registry) {
 	switch events.EventType(data[0]) {
 	case events.EventTypeExec:
 		ev, err := events.DecodeExecEvent(data)
@@ -191,6 +188,10 @@ func DispatchEvent(data []byte, handlers *events.HandlerChain, processTree *proc
 			return
 		}
 		processTree.AddProcess(ev.PID, ev.PPID, ev.CgroupID, utils.ExtractCString(ev.Comm[:]))
+		if registry != nil {
+			cgroupPath := proc.ResolveCgroupPath(ev.PID, ev.CgroupID)
+			registry.RecordExec(ev.CgroupID, cgroupPath)
+		}
 		handlers.HandleExec(ev)
 
 	case events.EventTypeFileOpen:
@@ -198,6 +199,10 @@ func DispatchEvent(data []byte, handlers *events.HandlerChain, processTree *proc
 		if err != nil {
 			log.Printf("Error decoding file open event: %v", err)
 			return
+		}
+		if registry != nil {
+			cgroupPath := proc.ResolveCgroupPath(ev.PID, ev.CgroupID)
+			registry.RecordFile(ev.CgroupID, cgroupPath)
 		}
 		filename := utils.ExtractCString(ev.Filename[:])
 		handlers.HandleFileOpen(ev, filename)
@@ -207,6 +212,10 @@ func DispatchEvent(data []byte, handlers *events.HandlerChain, processTree *proc
 		if err != nil {
 			log.Printf("Error decoding connect event: %v", err)
 			return
+		}
+		if registry != nil {
+			cgroupPath := proc.ResolveCgroupPath(ev.PID, ev.CgroupID)
+			registry.RecordConnect(ev.CgroupID, cgroupPath)
 		}
 		handlers.HandleConnect(ev)
 	}

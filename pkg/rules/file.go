@@ -1,6 +1,9 @@
 package rules
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 type fileMatcher struct {
 	exactFilenameRules map[string][]*Rule
@@ -70,7 +73,7 @@ func (m *fileMatcher) matchRule(rule *Rule, filename string, pid uint32, cgroupI
 	if match.FilePath != "" && !strings.HasPrefix(filename, match.FilePath) {
 		return false
 	}
-	if match.InContainer && cgroupID == 1 {
+	if match.CgroupID != "" && strconv.FormatUint(cgroupID, 10) != match.CgroupID {
 		return false
 	}
 	if match.PID != 0 && pid != match.PID {

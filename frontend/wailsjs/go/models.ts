@@ -12,7 +12,6 @@ export namespace gui {
     processName: string;
     parentName: string;
     cgroupId: string;
-    inContainer: boolean;
   }
 
   export interface FrontendConnectEvent {
@@ -23,7 +22,6 @@ export namespace gui {
     family: number;
     port: number;
     addr: string;
-    inContainer: boolean;
   }
 
   export interface FrontendExecEvent {
@@ -34,7 +32,6 @@ export namespace gui {
     cgroupId: string;
     comm: string;
     parentComm: string;
-    inContainer: boolean;
   }
 
   export interface FrontendFileEvent {
@@ -44,7 +41,6 @@ export namespace gui {
     cgroupId: string;
     flags: number;
     filename: string;
-    inContainer: boolean;
   }
 
   export interface LearningStatusDTO {
@@ -77,12 +73,21 @@ export namespace gui {
 
   export interface SystemStatsDTO {
     processCount: number;
-    containerCount: number;
+    workloadCount: number;
     eventsPerSec: number;
     alertCount: number;
     probeStatus: string;
-    cpuPercent: number;
-    memoryMB: number;
+  }
+
+  export interface WorkloadDTO {
+    id: string;
+    cgroupPath: string;
+    execCount: number;
+    fileCount: number;
+    connectCount: number;
+    alertCount: number;
+    firstSeen: number;
+    lastSeen: number;
   }
 }
 

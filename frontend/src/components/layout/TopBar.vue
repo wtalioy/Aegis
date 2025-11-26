@@ -1,23 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { Bell, Settings, Activity } from 'lucide-vue-next'
-import { subscribeToEventRates, subscribeToAlerts, type EventRates } from '../../lib/api'
+import { Activity } from 'lucide-vue-next'
+import { subscribeToEventRates, type EventRates } from '../../lib/api'
 
 const probeStatus = ref<'active' | 'error' | 'starting'>('starting')
 const eventRate = ref(0)
-const alertCount = ref(0)
 
 let unsubscribeRates: (() => void) | null = null
-let unsubscribeAlerts: (() => void) | null = null
 
 onMounted(() => {
   unsubscribeRates = subscribeToEventRates((data: EventRates) => {
     eventRate.value = data.exec + data.file + data.network
     probeStatus.value = 'active'
-  })
-
-  unsubscribeAlerts = subscribeToAlerts((alerts) => {
-    alertCount.value = alerts.length
   })
 
   setTimeout(() => {
@@ -29,7 +23,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   unsubscribeRates?.()
-  unsubscribeAlerts?.()
 })
 </script>
 
@@ -48,19 +41,13 @@ onUnmounted(() => {
     <div class="topbar-center">
       <div class="rate-display">
         <Activity :size="16" class="rate-icon" />
-        <span class="rate-value">{{ eventRate.toLocaleString() }}</span>
+        <span class="rate-value">{{ eventRate }}</span>
         <span class="rate-unit">events/s</span>
       </div>
     </div>
 
     <div class="topbar-right">
-      <button class="topbar-btn" :class="{ 'has-badge': alertCount > 0 }">
-        <Bell :size="20" />
-        <span v-if="alertCount > 0" class="btn-badge">{{ alertCount > 99 ? '99+' : alertCount }}</span>
-      </button>
-      <button class="topbar-btn">
-        <Settings :size="20" />
-      </button>
+      <!-- Placeholder for future actions -->
     </div>
   </header>
 </template>
@@ -162,40 +149,6 @@ onUnmounted(() => {
 .rate-unit {
   font-size: 12px;
   color: var(--text-muted);
-}
-
-.topbar-btn {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  transition: all var(--transition-fast);
-}
-
-.topbar-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.btn-badge {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--radius-full);
-  background: var(--status-critical);
-  color: white;
-  font-size: 10px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 @keyframes pulse-ring {

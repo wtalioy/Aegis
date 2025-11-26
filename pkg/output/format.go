@@ -2,7 +2,7 @@ package output
 
 import (
 	"eulerguard/pkg/events"
-	"eulerguard/pkg/proctree"
+	"eulerguard/pkg/proc"
 	"eulerguard/pkg/utils"
 	"fmt"
 	"strings"
@@ -19,7 +19,7 @@ func formatAlertText(ruleName, severity, description string, pid uint32, process
 }
 
 func formatFileAlertText(ruleName, severity, description, filename string,
-	pid uint32, cgroupID uint64, flags uint32, chain []*proctree.ProcessInfo) string {
+	pid uint32, cgroupID uint64, flags uint32, chain []*proc.ProcessInfo) string {
 
 	var builder strings.Builder
 	fmt.Fprintf(&builder, "[ALERT!] Rule '%s' triggered [Severity: %s]\n", ruleName, severity)
@@ -35,7 +35,7 @@ func formatFileAlertText(ruleName, severity, description, filename string,
 }
 
 func formatConnectAlertText(ruleName, severity, description, destAddr string,
-	pid uint32, cgroupID uint64, chain []*proctree.ProcessInfo) string {
+	pid uint32, cgroupID uint64, chain []*proc.ProcessInfo) string {
 
 	var builder strings.Builder
 	fmt.Fprintf(&builder, "[ALERT!] Rule '%s' triggered [Severity: %s]\n", ruleName, severity)
@@ -62,7 +62,7 @@ func formatAddress(ev *events.ConnectEvent) string {
 	}
 }
 
-func formatChain(chain []*proctree.ProcessInfo) string {
+func formatChain(chain []*proc.ProcessInfo) string {
 	parts := make([]string, len(chain))
 	for i, info := range reverseChain(chain) {
 		parts[i] = fmt.Sprintf("%s(%d)", info.Comm, info.PID)
@@ -70,7 +70,7 @@ func formatChain(chain []*proctree.ProcessInfo) string {
 	return strings.Join(parts, " -> ")
 }
 
-func formatChainJSON(chain []*proctree.ProcessInfo) []map[string]any {
+func formatChainJSON(chain []*proc.ProcessInfo) []map[string]any {
 	result := make([]map[string]any, len(chain))
 	for i, info := range reverseChain(chain) {
 		result[i] = map[string]any{
@@ -83,8 +83,8 @@ func formatChainJSON(chain []*proctree.ProcessInfo) []map[string]any {
 	return result
 }
 
-func reverseChain(chain []*proctree.ProcessInfo) []*proctree.ProcessInfo {
-	reversed := make([]*proctree.ProcessInfo, len(chain))
+func reverseChain(chain []*proc.ProcessInfo) []*proc.ProcessInfo {
+	reversed := make([]*proc.ProcessInfo, len(chain))
 	for i, info := range chain {
 		reversed[len(chain)-1-i] = info
 	}

@@ -3,13 +3,12 @@ package cli
 import (
 	"eulerguard/pkg/events"
 	"eulerguard/pkg/output"
-	"eulerguard/pkg/proctree"
+	"eulerguard/pkg/proc"
 	"eulerguard/pkg/rules"
 )
 
-// alertHandler prints alerts to terminal
 type cliAlertHandler struct {
-	processTree *proctree.ProcessTree
+	processTree *proc.ProcessTree
 	printer     *output.Printer
 	ruleEngine  *rules.Engine
 }

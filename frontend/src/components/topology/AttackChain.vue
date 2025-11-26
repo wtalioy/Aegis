@@ -1,11 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { VueFlow, useVueFlow } from '@vue-flow/core'
-import { Background } from '@vue-flow/background'
-import type { Node, Edge } from '@vue-flow/core'
+import { computed } from 'vue'
 import ProcessNode from './ProcessNode.vue'
 import type { ProcessInfo, Alert } from '../../lib/api'
-import { Camera, Download, Copy, RefreshCw } from 'lucide-vue-next'
 
 const props = defineProps<{
   ancestors: ProcessInfo[]
@@ -13,107 +9,20 @@ const props = defineProps<{
   loading?: boolean
 }>()
 
-const emit = defineEmits<{
-  refresh: []
-}>()
-
-// Vue Flow setup
-const { fitView } = useVueFlow()
-
-// Node dimensions for layout
-const NODE_WIDTH = 180
-const NODE_HEIGHT = 100
-const NODE_SPACING_Y = 40
-
-// Convert ancestors to Vue Flow nodes and edges
-const elements = computed(() => {
-  if (!props.ancestors.length) {
-    return { nodes: [], edges: [] }
-  }
-
-  const nodes: Node[] = []
-  const edges: Edge[] = []
-
-  // Ancestors come from oldest (root) to newest (alert source)
-  // We want to display from top (root) to bottom (alert source)
-  const sortedAncestors = [...props.ancestors]
+// Prepare process data for display
+const processChain = computed(() => {
+  if (!props.ancestors.length) return []
   
-  // Calculate center X position
-  const centerX = 200
-
-  sortedAncestors.forEach((proc, index) => {
-    const isAlertSource = index === sortedAncestors.length - 1 && props.alert
-    
-    nodes.push({
-      id: `proc-${proc.pid}`,
-      type: 'process',
-      position: { 
-        x: centerX - NODE_WIDTH / 2, 
-        y: index * (NODE_HEIGHT + NODE_SPACING_Y) 
-      },
-      data: {
-        pid: proc.pid,
-        ppid: proc.ppid,
-        comm: proc.comm,
-        timestamp: proc.timestamp,
-        isTarget: isAlertSource,
-        isAlertSource: isAlertSource,
-        inContainer: proc.cgroupId !== '1' && proc.cgroupId !== '0',
-        severity: isAlertSource ? props.alert?.severity as 'high' | 'warning' | 'info' : undefined
-      }
-    })
-
-    // Create edge to next node (child)
-    if (index < sortedAncestors.length - 1) {
-      const child = sortedAncestors[index + 1]
-      edges.push({
-        id: `edge-${proc.pid}-${child.pid}`,
-        source: `proc-${proc.pid}`,
-        target: `proc-${child.pid}`,
-        type: 'smoothstep',
-        animated: index === sortedAncestors.length - 2, // Animate last edge
-        style: {
-          stroke: index === sortedAncestors.length - 2 
-            ? 'var(--status-critical)' 
-            : 'var(--border-default)',
-          strokeWidth: 2
-        }
-      })
+  return props.ancestors.map((proc, index) => {
+    const isLast = index === props.ancestors.length - 1
+    const isAlertSource = isLast && !!props.alert
+    return {
+      ...proc,
+      isAlertSource,
+      severity: isAlertSource ? (props.alert?.severity as 'high' | 'warning' | 'info') : undefined
     }
   })
-
-  return { nodes, edges }
 })
-
-const nodes = computed(() => elements.value.nodes)
-const edges = computed(() => elements.value.edges)
-
-// Auto-fit view when data changes
-watch(() => props.ancestors, () => {
-  setTimeout(() => {
-    fitView({ padding: 0.3 })
-  }, 100)
-}, { deep: true })
-
-// Export functions
-const copyChainAsText = () => {
-  if (!props.ancestors.length) return
-  
-  const text = props.ancestors
-    .map((p, i) => {
-      const indent = '  '.repeat(i)
-      const arrow = i > 0 ? '└─ ' : ''
-      return `${indent}${arrow}${p.comm} (PID: ${p.pid})`
-    })
-    .join('\n')
-  
-  navigator.clipboard.writeText(text)
-}
-
-const copyChainAsJson = () => {
-  if (!props.ancestors.length) return
-  navigator.clipboard.writeText(JSON.stringify(props.ancestors, null, 2))
-}
 </script>
 
 <template>
@@ -124,23 +33,9 @@ const copyChainAsJson = () => {
         <span class="title-text">Attack Chain</span>
         <span v-if="ancestors.length" class="title-count">{{ ancestors.length }} processes</span>
       </div>
-      <div class="toolbar-actions">
-        <button class="toolbar-btn" @click="fitView({ padding: 0.3 })" title="Fit View">
-          <Camera :size="16" />
-        </button>
-        <button class="toolbar-btn" @click="copyChainAsText" title="Copy as Text">
-          <Copy :size="16" />
-        </button>
-        <button class="toolbar-btn" @click="copyChainAsJson" title="Copy as JSON">
-          <Download :size="16" />
-        </button>
-        <button class="toolbar-btn" @click="$emit('refresh')" title="Refresh">
-          <RefreshCw :size="16" :class="{ spinning: loading }" />
-        </button>
-      </div>
     </div>
 
-    <!-- Vue Flow Canvas -->
+    <!-- Chain Canvas -->
     <div class="chain-canvas">
       <!-- Loading State -->
       <div v-if="loading" class="chain-loading">
@@ -166,22 +61,35 @@ const copyChainAsJson = () => {
         </div>
       </div>
 
-      <!-- Vue Flow Graph -->
-      <VueFlow
-        v-else
-        :nodes="nodes"
-        :edges="edges"
-        :default-viewport="{ x: 0, y: 0, zoom: 1 }"
-        :min-zoom="0.3"
-        :max-zoom="2"
-        fit-view-on-init
-        class="vue-flow-container"
-      >
-        <Background pattern-color="rgba(255, 255, 255, 0.03)" :gap="20" />
-        <template #node-process="nodeProps">
-          <ProcessNode v-bind="nodeProps" />
-        </template>
-      </VueFlow>
+      <!-- Process Chain -->
+      <div v-else class="chain-content">
+        <div class="chain-wrapper">
+          <div 
+            v-for="(proc, index) in processChain" 
+            :key="proc.pid"
+            class="chain-node-wrapper"
+          >
+            <!-- Connector line from previous node -->
+            <div v-if="index > 0" class="connector">
+              <div class="connector-line" :class="{ 'is-alert': index === processChain.length - 1 }"></div>
+              <div class="connector-arrow" :class="{ 'is-alert': index === processChain.length - 1 }"></div>
+            </div>
+            
+            <!-- Process Node -->
+            <ProcessNode 
+              :data="{
+                pid: proc.pid,
+                ppid: proc.ppid,
+                comm: proc.comm,
+                timestamp: proc.timestamp,
+                cgroupId: proc.cgroupId,
+                isAlertSource: proc.isAlertSource,
+                severity: proc.severity
+              }"
+            />
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Alert Details Footer -->
@@ -215,6 +123,7 @@ const copyChainAsJson = () => {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-elevated);
+  flex-shrink: 0;
 }
 
 .toolbar-title {
@@ -235,46 +144,11 @@ const copyChainAsJson = () => {
   font-family: var(--font-mono);
 }
 
-.toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.toolbar-btn {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  transition: all var(--transition-fast);
-}
-
-.toolbar-btn:hover {
-  background: var(--bg-overlay);
-  color: var(--text-primary);
-}
-
-.toolbar-btn .spinning {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
 .chain-canvas {
   flex: 1;
   position: relative;
-  min-height: 300px;
-}
-
-.vue-flow-container {
-  width: 100%;
-  height: 100%;
+  overflow: auto;
+  background: var(--bg-void);
 }
 
 /* Loading State */
@@ -328,6 +202,57 @@ const copyChainAsJson = () => {
   max-width: 280px;
 }
 
+/* Chain Content */
+.chain-content {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100%;
+  padding: 32px 24px;
+}
+
+.chain-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.chain-node-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Connector between nodes */
+.connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 40px;
+}
+
+.connector-line {
+  width: 2px;
+  flex: 1;
+  background: var(--border-default);
+}
+
+.connector-line.is-alert {
+  background: var(--status-warning);
+}
+
+.connector-arrow {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid var(--border-default);
+}
+
+.connector-arrow.is-alert {
+  border-top-color: var(--status-warning);
+}
+
 /* Footer */
 .chain-footer {
   display: flex;
@@ -337,6 +262,7 @@ const copyChainAsJson = () => {
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-elevated);
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .footer-label {
@@ -356,41 +282,4 @@ const copyChainAsJson = () => {
   color: var(--border-default);
   margin: 0 4px;
 }
-
-/* Vue Flow overrides */
-:deep(.vue-flow__edge-path) {
-  stroke-width: 2;
-}
-
-:deep(.vue-flow__edge.animated path) {
-  stroke-dasharray: 5;
-  animation: dash 0.5s linear infinite;
-}
-
-@keyframes dash {
-  to {
-    stroke-dashoffset: -10;
-  }
-}
-
-:deep(.vue-flow__background) {
-  background: var(--bg-void);
-}
-
-:deep(.vue-flow__controls) {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-}
-
-:deep(.vue-flow__controls button) {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-}
-
-:deep(.vue-flow__controls button:hover) {
-  background: var(--bg-overlay);
-}
 </style>
-

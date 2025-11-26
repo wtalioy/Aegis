@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Terminal, Globe, FileText, Container } from 'lucide-vue-next'
+import { Terminal, Globe, FileText } from 'lucide-vue-next'
 import type { StreamEvent } from '../../lib/api'
 
 type EventWithId = StreamEvent & { id: string }
@@ -51,6 +51,18 @@ const processName = computed(() => {
   }
   return `PID ${props.event.pid}`
 })
+
+// Generate a consistent color from cgroup ID for workload badge
+const workloadColor = computed(() => {
+  if (!props.event.cgroupId || props.event.cgroupId === '0') return null
+  // Hash the cgroup ID to get a hue value
+  let hash = 0
+  for (let i = 0; i < props.event.cgroupId.length; i++) {
+    hash = props.event.cgroupId.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = Math.abs(hash % 360)
+  return `hsl(${hue}, 60%, 50%)`
+})
 </script>
 
 <template>
@@ -69,9 +81,7 @@ const processName = computed(() => {
     
     <span class="event-details">{{ details }}</span>
     
-    <span v-if="event.inContainer" class="event-container">
-      <Container :size="12" />
-    </span>
+    <span v-if="workloadColor" class="event-workload" :style="{ background: workloadColor }"></span>
   </div>
 </template>
 
@@ -152,11 +162,11 @@ const processName = computed(() => {
   font-size: 11px;
 }
 
-.event-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--status-info);
+.event-workload {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin: auto;
 }
 </style>
 

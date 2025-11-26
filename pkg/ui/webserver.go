@@ -70,8 +70,8 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		setCORS(w)
 		w.Header().Set("Content-Type", "application/json")
 		s := app.GetSystemStats()
-		fmt.Fprintf(w, `{"processCount":%d,"containerCount":%d,"eventsPerSec":%.2f,"alertCount":%d,"probeStatus":"%s"}`,
-			s.ProcessCount, s.ContainerCount, s.EventsPerSec, s.AlertCount, s.ProbeStatus)
+		fmt.Fprintf(w, `{"processCount":%d,"workloadCount":%d,"eventsPerSec":%.2f,"alertCount":%d,"probeStatus":"%s"}`,
+			s.ProcessCount, s.WorkloadCount, s.EventsPerSec, s.AlertCount, s.ProbeStatus)
 	})
 
 	mux.HandleFunc("/api/alerts", func(w http.ResponseWriter, r *http.Request) {
@@ -87,8 +87,8 @@ func registerAPI(mux *http.ServeMux, app *App) {
 			if i > 0 {
 				w.Write([]byte(","))
 			}
-			fmt.Fprintf(w, `{"id":"%s","timestamp":%d,"severity":"%s","ruleName":"%s","description":"%s","pid":%d,"processName":"%s","inContainer":%t}`,
-				a.ID, a.Timestamp, a.Severity, a.RuleName, a.Description, a.PID, a.ProcessName, a.InContainer)
+			fmt.Fprintf(w, `{"id":"%s","timestamp":%d,"severity":"%s","ruleName":"%s","description":"%s","pid":%d,"processName":"%s","cgroupId":"%s"}`,
+				a.ID, a.Timestamp, a.Severity, a.RuleName, a.Description, a.PID, a.ProcessName, a.CgroupID)
 		}
 		w.Write([]byte("]"))
 	})
@@ -150,6 +150,44 @@ func registerAPI(mux *http.ServeMux, app *App) {
 
 		rules := app.GetRules()
 		data, _ := json.Marshal(rules)
+		w.Write(data)
+	})
+
+	// Get all workloads
+	mux.HandleFunc("/api/workloads", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		w.Header().Set("Content-Type", "application/json")
+
+		// Check if this is a single workload request
+		if strings.HasPrefix(r.URL.Path, "/api/workloads/") {
+			idStr := strings.TrimPrefix(r.URL.Path, "/api/workloads/")
+			workload := app.GetWorkload(idStr)
+			if workload == nil {
+				http.Error(w, "Workload not found", http.StatusNotFound)
+				return
+			}
+			data, _ := json.Marshal(workload)
+			w.Write(data)
+			return
+		}
+
+		workloads := app.GetWorkloads()
+		data, _ := json.Marshal(workloads)
+		w.Write(data)
+	})
+
+	// Get single workload by ID
+	mux.HandleFunc("/api/workloads/", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+		w.Header().Set("Content-Type", "application/json")
+
+		idStr := strings.TrimPrefix(r.URL.Path, "/api/workloads/")
+		workload := app.GetWorkload(idStr)
+		if workload == nil {
+			http.Error(w, "Workload not found", http.StatusNotFound)
+			return
+		}
+		data, _ := json.Marshal(workload)
 		w.Write(data)
 	})
 

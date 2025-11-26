@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { AlertTriangle, Filter, Search, X } from 'lucide-vue-next'
 import AlertCard from '../components/alerts/AlertCard.vue'
 import AttackChain from '../components/topology/AttackChain.vue'
 import { useAlerts } from '../composables/useAlerts'
 import { getAncestors, type Alert, type ProcessInfo } from '../lib/api'
 
+const route = useRoute()
 const { alerts, getAlertsBySeverity } = useAlerts()
 
 // State
@@ -13,11 +15,29 @@ const selectedAlert = ref<Alert | null>(null)
 const ancestors = ref<ProcessInfo[]>([])
 const loadingAncestors = ref(false)
 const filterSeverity = ref<string>('all')
+const filterWorkload = ref<string>('')
 const searchQuery = ref('')
+
+// Initialize workload filter from route query
+onMounted(() => {
+  if (route.query.workload) {
+    filterWorkload.value = route.query.workload as string
+  }
+})
+
+// Watch for route changes
+watch(() => route.query.workload, (newWorkload) => {
+  filterWorkload.value = (newWorkload as string) || ''
+})
 
 // Filtered alerts
 const filteredAlerts = computed(() => {
   let result = alerts.value
+
+  // Filter by workload (cgroup ID)
+  if (filterWorkload.value) {
+    result = result.filter(a => a.cgroupId === filterWorkload.value)
+  }
 
   // Filter by severity
   if (filterSeverity.value !== 'all') {
@@ -37,6 +57,10 @@ const filteredAlerts = computed(() => {
 
   return result
 })
+
+const clearWorkloadFilter = () => {
+  filterWorkload.value = ''
+}
 
 // Stats
 const severityCounts = computed(() => getAlertsBySeverity())
@@ -136,14 +160,34 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
               <X :size="14" />
             </button>
           </div>
-          <div class="filter-severity">
-            <Filter :size="14" class="filter-icon" />
-            <select v-model="filterSeverity" class="severity-select">
-              <option value="all">All Severity</option>
-              <option value="high">High</option>
-              <option value="warning">Warning</option>
-              <option value="info">Info</option>
-            </select>
+          
+          <div class="filter-row">
+            <div class="filter-severity">
+              <Filter :size="14" class="filter-icon" />
+              <select v-model="filterSeverity" class="severity-select">
+                <option value="all">All Severity</option>
+                <option value="high">High</option>
+                <option value="warning">Warning</option>
+                <option value="info">Info</option>
+              </select>
+            </div>
+            
+            <div class="filter-workload">
+              <input 
+                v-model="filterWorkload"
+                type="text" 
+                placeholder="Cgroup ID..."
+                class="workload-input"
+              />
+              <button 
+                v-if="filterWorkload" 
+                class="workload-clear" 
+                @click="clearWorkloadFilter"
+                title="Clear workload filter"
+              >
+                <X :size="12" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -354,10 +398,63 @@ watch(() => alerts.value.length, (newLen, oldLen) => {
   color: var(--text-primary);
 }
 
+.filter-row {
+  display: flex;
+  gap: 8px;
+}
+
 .filter-severity {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+}
+
+.filter-workload {
+  display: flex;
+  align-items: center;
+  position: relative;
+  flex: 1;
+}
+
+.workload-input {
+  width: 100%;
+  padding: 6px 28px 6px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.workload-input::placeholder {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+}
+
+.workload-input:focus {
+  border-color: var(--border-focus);
+}
+
+.workload-clear {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+
+.workload-clear:hover {
+  background: var(--bg-overlay);
+  color: var(--text-primary);
 }
 
 .filter-icon {

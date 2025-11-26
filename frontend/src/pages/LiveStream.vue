@@ -18,13 +18,13 @@ const filters = ref({
   exec: true,
   connect: true,
   file: true,
-  containerOnly: false
+  workloadId: '' // Filter by specific workload (cgroup ID)
 })
 
 const filteredEvents = computed(() => {
   const filtered = events.value.filter(event => {
     if (!filters.value[event.type]) return false
-    if (filters.value.containerOnly && !event.inContainer) return false
+    if (filters.value.workloadId && event.cgroupId !== filters.value.workloadId) return false
     return true
   })
   return [...filtered].sort((a, b) => b.timestamp - a.timestamp)
@@ -106,7 +106,7 @@ onUnmounted(() => {
         <span class="col-type">Type</span>
         <span class="col-process">Process</span>
         <span class="col-details">Details</span>
-        <span class="col-container"></span>
+        <span class="col-workload"></span>
       </div>
 
       <!-- Event List with Virtual Scrolling -->

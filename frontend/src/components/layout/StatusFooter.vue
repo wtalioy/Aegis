@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { HardDrive, Activity, Box } from 'lucide-vue-next'
+import { Boxes, Activity, Box } from 'lucide-vue-next'
 import { getSystemStats } from '../../lib/api'
 
 interface SystemStats {
   processCount: number
-  containerCount: number
+  workloadCount: number
   eventsPerSec: number
   alertCount: number
   probeStatus: string
@@ -13,7 +13,7 @@ interface SystemStats {
 
 const stats = ref<SystemStats>({
   processCount: 0,
-  containerCount: 0,
+  workloadCount: 0,
   eventsPerSec: 0,
   alertCount: 0,
   probeStatus: 'starting'
@@ -56,13 +56,13 @@ onUnmounted(() => {
       <div class="footer-item">
         <Box :size="14" class="footer-icon" />
         <span class="footer-label">Processes:</span>
-        <span class="footer-value">{{ stats.processCount.toLocaleString() }}</span>
+        <span class="footer-value">{{ stats.processCount }}</span>
       </div>
       <div class="footer-divider"></div>
       <div class="footer-item">
-        <HardDrive :size="14" class="footer-icon" />
-        <span class="footer-label">Containers:</span>
-        <span class="footer-value">{{ stats.containerCount }}</span>
+        <Boxes :size="14" class="footer-icon" />
+        <span class="footer-label">Workloads:</span>
+        <span class="footer-value">{{ stats.workloadCount }}</span>
       </div>
     </div>
 

@@ -136,26 +136,17 @@ func (p *Profiler) profileToRule(profile BehaviorProfile) rules.Rule {
 			ParentName:      profile.Parent,
 			ParentNameType:  rules.MatchTypeExact,
 		}
-		if profile.CgroupID > 1 {
-			rule.Match.InContainer = true
-		}
 
 	case events.EventTypeFileOpen:
 		rule.Name = fmt.Sprintf("Allow access to %s", profile.File)
 		rule.Match = rules.MatchCondition{
 			Filename: profile.File,
 		}
-		if profile.CgroupID > 1 {
-			rule.Match.InContainer = true
-		}
 
 	case events.EventTypeConnect:
 		rule.Name = fmt.Sprintf("Allow connection to port %d", profile.Port)
 		rule.Match = rules.MatchCondition{
 			DestPort: profile.Port,
-		}
-		if profile.CgroupID > 1 {
-			rule.Match.InContainer = true
 		}
 	}
 

@@ -1,4 +1,4 @@
-package proctree
+package proc
 
 import (
 	"container/heap"

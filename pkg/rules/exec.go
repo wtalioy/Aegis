@@ -1,6 +1,10 @@
 package rules
 
-import "eulerguard/pkg/events"
+import (
+	"strconv"
+
+	"eulerguard/pkg/events"
+)
 
 type execMatcher struct {
 	exactProcessNameRules map[string][]*Rule
@@ -104,5 +108,12 @@ func (m *execMatcher) matchRule(rule *Rule, event events.ProcessedEvent) bool {
 		(match.ParentName == "" || matchString(event.Parent, match.ParentName, match.ParentNameType)) &&
 		(match.PID == 0 || event.Event.PID == match.PID) &&
 		(match.PPID == 0 || event.Event.PPID == match.PPID) &&
-		(!match.InContainer || event.Event.CgroupID != 1)
+		matchCgroupID(match.CgroupID, event.Event.CgroupID)
+}
+
+func matchCgroupID(pattern string, cgroupID uint64) bool {
+	if pattern == "" {
+		return true
+	}
+	return strconv.FormatUint(cgroupID, 10) == pattern
 }

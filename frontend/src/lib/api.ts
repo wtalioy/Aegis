@@ -3,7 +3,7 @@
 
 export interface SystemStats {
     processCount: number
-    containerCount: number
+    workloadCount: number
     eventsPerSec: number
     alertCount: number
     probeStatus: string
@@ -17,7 +17,7 @@ export interface Alert {
     description: string
     pid: number
     processName: string
-    inContainer: boolean
+    cgroupId: string
 }
 
 export interface EventRates {
@@ -34,7 +34,6 @@ export interface ProcessInfo {
     timestamp: number
 }
 
-// Event types for LiveStream
 export interface ExecEvent {
     type: 'exec'
     timestamp: number
@@ -43,7 +42,6 @@ export interface ExecEvent {
     cgroupId: string
     comm: string
     parentComm: string
-    inContainer: boolean
 }
 
 export interface ConnectEvent {
@@ -54,7 +52,6 @@ export interface ConnectEvent {
     family: number
     port: number
     addr: string
-    inContainer: boolean
 }
 
 export interface FileEvent {
@@ -64,12 +61,10 @@ export interface FileEvent {
     cgroupId: string
     flags: number
     filename: string
-    inContainer: boolean
 }
 
 export type StreamEvent = ExecEvent | ConnectEvent | FileEvent
 
-// Detection rule types
 export interface DetectionRule {
     name: string
     description: string
@@ -80,7 +75,6 @@ export interface DetectionRule {
     yaml: string
 }
 
-// Learning status for profiler
 export interface LearningStatus {
     active: boolean
     startTime: number
@@ -89,7 +83,6 @@ export interface LearningStatus {
     remainingSeconds: number
 }
 
-// Generated rule from learning
 export interface GeneratedRule {
     name: string
     description: string
@@ -99,7 +92,6 @@ export interface GeneratedRule {
     selected: boolean
 }
 
-// Probe statistics for Kernel X-Ray
 export interface ProbeStats {
     id: string
     name: string
@@ -107,6 +99,17 @@ export interface ProbeStats {
     active: boolean
     eventsRate: number
     totalCount: number
+}
+
+export interface Workload {
+    id: string
+    cgroupPath: string
+    execCount: number
+    fileCount: number
+    connectCount: number
+    alertCount: number
+    firstSeen: number
+    lastSeen: number
 }
 
 type EventCallback<T> = (data: T) => void
@@ -118,13 +121,12 @@ export const isWailsMode = typeof (window as any).__wails__ !== 'undefined'
 export async function getSystemStats(): Promise<SystemStats> {
     if (isWailsMode) {
         const { GetSystemStats } = await import('../../wailsjs/go/gui/App')
-        return GetSystemStats()
+        return GetSystemStats() as Promise<SystemStats>
     }
     const resp = await fetch('/api/stats')
     return resp.json()
 }
 
-// Get alerts list
 export async function getAlerts(): Promise<Alert[]> {
     if (isWailsMode) {
         const { GetAlerts } = await import('../../wailsjs/go/gui/App')
@@ -134,7 +136,6 @@ export async function getAlerts(): Promise<Alert[]> {
     return resp.json()
 }
 
-// Get process ancestors chain for attack chain visualization
 export async function getAncestors(pid: number): Promise<ProcessInfo[]> {
     if (isWailsMode) {
         const { GetAncestors } = await import('../../wailsjs/go/gui/App')
@@ -144,7 +145,6 @@ export async function getAncestors(pid: number): Promise<ProcessInfo[]> {
     return resp.json()
 }
 
-// Get all detection rules
 export async function getRules(): Promise<DetectionRule[]> {
     if (isWailsMode) {
         const module = await import('../../wailsjs/go/gui/App') as any
@@ -157,7 +157,6 @@ export async function getRules(): Promise<DetectionRule[]> {
     return resp.json()
 }
 
-// Get probe statistics for Kernel X-Ray
 export async function getProbeStats(): Promise<ProbeStats[]> {
     if (isWailsMode) {
         const module = await import('../../wailsjs/go/gui/App') as any
@@ -170,7 +169,31 @@ export async function getProbeStats(): Promise<ProbeStats[]> {
     return resp.json()
 }
 
-// Profiler / Learning Mode APIs
+export async function getWorkloads(): Promise<Workload[]> {
+    if (isWailsMode) {
+        const module = await import('../../wailsjs/go/gui/App') as any
+        if (typeof module.GetWorkloads === 'function') {
+            return module.GetWorkloads()
+        }
+        return []
+    }
+    const resp = await fetch('/api/workloads')
+    return resp.json()
+}
+
+export async function getWorkload(id: string): Promise<Workload | null> {
+    if (isWailsMode) {
+        const module = await import('../../wailsjs/go/gui/App') as any
+        if (typeof module.GetWorkload === 'function') {
+            return module.GetWorkload(id)
+        }
+        return null
+    }
+    const resp = await fetch(`/api/workloads/${id}`)
+    if (!resp.ok) return null
+    return resp.json()
+}
+
 export async function getLearningStatus(): Promise<LearningStatus> {
     if (isWailsMode) {
         const { GetLearningStatus } = await import('../../wailsjs/go/gui/App')
@@ -291,7 +314,6 @@ export function subscribeToAlerts(callback: EventCallback<Alert[]>): Unsubscribe
     }
 }
 
-// Subscribe to all events for LiveStream
 export function subscribeToAllEvents(callback: EventCallback<StreamEvent>): UnsubscribeFn {
     if (isWailsMode) {
         const cleanups: (() => void)[] = []
@@ -311,7 +333,6 @@ export function subscribeToAllEvents(callback: EventCallback<StreamEvent>): Unsu
         return () => cleanups.forEach(fn => fn())
     }
 
-    // Web mode: use SSE for all events
     const eventSource = new EventSource('/api/stream')
 
     eventSource.onmessage = (event) => {

@@ -76,7 +76,7 @@ func RunCLI(opts config.Options, ctx context.Context) error {
 		log.Printf("EulerGuard tracer ready (BPF: %s, rules: %s)", cli.Opts.BPFPath, cli.Opts.RulesPath)
 	}
 
-	return tracer.EventLoop(cli.Core.Reader, cli.Handlers, cli.Core.ProcessTree)
+	return tracer.EventLoop(cli.Core.Reader, cli.Handlers, cli.Core.ProcessTree, cli.Core.WorkloadRegistry)
 }
 
 func (cli *CLI) runLearnModeTimer(ctx context.Context, cancel context.CancelFunc) {

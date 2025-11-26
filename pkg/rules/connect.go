@@ -1,6 +1,8 @@
 package rules
 
 import (
+	"strconv"
+
 	"eulerguard/pkg/events"
 	"eulerguard/pkg/utils"
 )
@@ -46,7 +48,7 @@ func (m *connectMatcher) matchRule(rule *Rule, event *events.ConnectEvent) bool 
 			return false
 		}
 	}
-	if match.InContainer && event.CgroupID == 1 {
+	if match.CgroupID != "" && strconv.FormatUint(event.CgroupID, 10) != match.CgroupID {
 		return false
 	}
 	if match.PID != 0 && event.PID != match.PID {

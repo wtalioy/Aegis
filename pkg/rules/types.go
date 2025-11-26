@@ -27,7 +27,7 @@ type MatchCondition struct {
 	ParentNameType  MatchType `yaml:"parent_name_type,omitempty"`
 	PID             uint32    `yaml:"pid,omitempty"`
 	PPID            uint32    `yaml:"ppid,omitempty"`
-	InContainer     bool      `yaml:"in_container,omitempty"`
+	CgroupID        string    `yaml:"cgroup_id,omitempty"`
 	Filename        string    `yaml:"filename,omitempty"`
 	FilePath        string    `yaml:"file_path,omitempty"`
 	DestPort        uint16    `yaml:"dest_port,omitempty"`

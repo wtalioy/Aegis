@@ -19,11 +19,11 @@ func (a *App) GetSystemStats() SystemStatsDTO {
 	exec, file, net := a.stats.Rates()
 
 	return SystemStatsDTO{
-		ProcessCount:   processCount,
-		ContainerCount: a.stats.ContainerCount(),
-		EventsPerSec:   float64(exec + file + net),
-		AlertCount:     int(a.stats.TotalAlertCount()),
-		ProbeStatus:    "active",
+		ProcessCount:  processCount,
+		WorkloadCount: a.stats.WorkloadCount(),
+		EventsPerSec:  float64(exec + file + net),
+		AlertCount:    int(a.stats.TotalAlertCount()),
+		ProbeStatus:   "active",
 	}
 }
 
@@ -179,6 +179,59 @@ func (a *App) GetProbeStats() []ProbeStatsDTO {
 	}
 }
 
+// GetWorkloads returns all tracked workloads
+func (a *App) GetWorkloads() []WorkloadDTO {
+	if a.workloadRegistry == nil {
+		return []WorkloadDTO{}
+	}
+
+	workloads := a.workloadRegistry.List()
+	result := make([]WorkloadDTO, len(workloads))
+
+	for i, w := range workloads {
+		result[i] = WorkloadDTO{
+			ID:           strconv.FormatUint(uint64(w.ID), 10),
+			CgroupPath:   w.CgroupPath,
+			ExecCount:    w.ExecCount,
+			FileCount:    w.FileCount,
+			ConnectCount: w.ConnectCount,
+			AlertCount:   w.AlertCount,
+			FirstSeen:    w.FirstSeen.UnixMilli(),
+			LastSeen:     w.LastSeen.UnixMilli(),
+		}
+	}
+
+	return result
+}
+
+// GetWorkload returns a single workload by ID
+func (a *App) GetWorkload(id string) *WorkloadDTO {
+	if a.workloadRegistry == nil {
+		return nil
+	}
+
+	cgroupID, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		return nil
+	}
+
+	w := a.workloadRegistry.Get(cgroupID)
+	if w == nil {
+		return nil
+	}
+
+	return &WorkloadDTO{
+		ID:           strconv.FormatUint(uint64(w.ID), 10),
+		CgroupPath:   w.CgroupPath,
+		ExecCount:    w.ExecCount,
+		FileCount:    w.FileCount,
+		ConnectCount: w.ConnectCount,
+		AlertCount:   w.AlertCount,
+		FirstSeen:    w.FirstSeen.UnixMilli(),
+		LastSeen:     w.LastSeen.UnixMilli(),
+	}
+}
+
 // GetRules returns all loaded detection rules
 func (a *App) GetRules() []DetectionRuleDTO {
 	if a.ruleEngine == nil {
@@ -217,8 +270,8 @@ func (a *App) GetRules() []DetectionRuleDTO {
 		if rule.Match.DestIP != "" {
 			matchMap["dest_ip"] = rule.Match.DestIP
 		}
-		if rule.Match.InContainer {
-			matchMap["in_container"] = "true"
+		if rule.Match.CgroupID != "" {
+			matchMap["cgroup_id"] = rule.Match.CgroupID
 		}
 
 		yamlBytes, _ := yaml.Marshal(rule)

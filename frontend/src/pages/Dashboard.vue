@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { Activity, AlertTriangle, Box, Container, ArrowRight } from 'lucide-vue-next'
+import { Activity, AlertTriangle, Box, Boxes, ArrowRight } from 'lucide-vue-next'
 import Card from '../components/common/Card.vue'
 import StatCard from '../components/common/StatCard.vue'
 import EventsChart from '../components/charts/EventsChart.vue'
@@ -14,7 +14,7 @@ const { alerts, getAlertsBySeverity } = useAlerts()
 
 const stats = ref<SystemStats>({
   processCount: 0,
-  containerCount: 0,
+  workloadCount: 0,
   eventsPerSec: 0,
   alertCount: 0,
   probeStatus: 'starting'
@@ -82,9 +82,9 @@ onMounted(() => {
         :icon="Box"
       />
       <StatCard 
-        :value="stats.containerCount"
-        label="Containers"
-        :icon="Container"
+        :value="stats.workloadCount"
+        label="Workloads"
+        :icon="Boxes"
         color="info"
       />
     </div>

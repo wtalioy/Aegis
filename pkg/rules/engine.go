@@ -41,7 +41,6 @@ func (e *Engine) MatchConnect(event *events.ConnectEvent) (bool, *Rule) {
 	return e.connectMatcher.Match(event)
 }
 
-// GetRules returns all loaded rules
 func (e *Engine) GetRules() []Rule {
 	return e.rules
 }

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { Play, Pause, Trash2, Terminal, Globe, FileText, Container } from 'lucide-vue-next'
+import { Play, Pause, Trash2, Terminal, Globe, FileText } from 'lucide-vue-next'
 
 interface Filters {
   exec: boolean
   connect: boolean
   file: boolean
-  containerOnly: boolean
+  workloadId: string
 }
 
 defineProps<{
@@ -76,18 +76,6 @@ defineEmits<{
         </label>
       </div>
 
-      <div class="control-divider"></div>
-
-      <!-- Container Filter -->
-      <label class="filter-toggle container-filter" :class="{ active: filters.containerOnly }">
-        <input 
-          type="checkbox" 
-          :checked="filters.containerOnly"
-          @change="$emit('update:filters', { ...filters, containerOnly: !filters.containerOnly })"
-        />
-        <Container :size="14" />
-        <span>Container Only</span>
-      </label>
     </div>
 
     <div class="controls-right">
@@ -204,10 +192,6 @@ defineEmits<{
 
 .filter-group .filter-toggle:nth-child(3).active {
   color: var(--status-safe);
-}
-
-.container-filter.active {
-  color: var(--status-info);
 }
 
 .controls-right {
