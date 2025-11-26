@@ -29,11 +29,11 @@ import StatusFooter from './components/layout/StatusFooter.vue'
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 100vh;
 }
 
 .main-content {
   flex: 1;
   padding: 24px;
-  overflow-y: auto;
 }
 </style>

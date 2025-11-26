@@ -92,6 +92,9 @@ const isActive = (path: string) => route.path === path
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
 }
 
 .sidebar-header {
