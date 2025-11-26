@@ -1,121 +1,52 @@
 rules:
-  # High-severity rules - actual threats
-  - name: "Shell in Container"
-    description: "Shell execution in container may indicate container escape or unauthorized access"
-    severity: "high"
+  - name: Reverse Shell Pattern
+    description: Bash spawned by network service may indicate reverse shell
+    severity: warning
     match:
-      process_name: "bash"
-      process_name_type: "exact"
-      in_container: true
-    action: "alert"
-
-  - name: "Interactive Shell in Container"
-    description: "Interactive shell in container (sh) may indicate compromise"
-    severity: "high"
+      process_name: bash
+      process_name_type: exact
+      parent_name: nc
+      parent_name_type: contains
+    action: alert
+    type: exec
+  - name: Shell from Web Server
+    description: Shell execution from web server process
+    severity: warning
     match:
-      process_name: "sh"
-      process_name_type: "exact"
-      in_container: true
-    action: "alert"
-
-  # Medium-severity rules - potentially suspicious
-  - name: "Reverse Shell Pattern"
-    description: "Bash spawned by network service may indicate reverse shell"
-    severity: "warning"
+      process_name: bash
+      process_name_type: exact
+      parent_name: apache
+      parent_name_type: contains
+    action: alert
+    type: exec
+  - name: Shell from Nginx
+    description: Shell execution from nginx process
+    severity: warning
     match:
-      process_name: "bash"
-      process_name_type: "exact"
-      parent_name: "nc"
-      parent_name_type: "contains"
-    action: "alert"
-
-  - name: "Shell from Web Server"
-    description: "Shell execution from web server process"
-    severity: "warning"
+      process_name: bash
+      process_name_type: exact
+      parent_name: nginx
+      parent_name_type: contains
+    action: alert
+    type: exec
+  - name: Access to sensitive files
+    description: Access to sensitive system files that should be monitored
+    severity: high
     match:
-      process_name: "bash"
-      process_name_type: "exact"
-      parent_name: "apache"
-      parent_name_type: "contains"
-    action: "alert"
-
-  - name: "Shell from Nginx"
-    description: "Shell execution from nginx process"
-    severity: "warning"
-    match:
-      process_name: "bash"
-      process_name_type: "exact"
-      parent_name: "nginx"
-      parent_name_type: "contains"
-    action: "alert"
-
-  # Note: Removed generic bash/python/curl/wget rules that trigger on every execution
-  # These created too much noise on normal systems. Add back with more specific 
-  # parent process or container context if needed for your environment.
-
-  # File Access Rules
-  # - name: "Access to /etc/shadow"
-  #   description: "Attempt to access /etc/shadow file, which contains password hashes"
-  #   severity: "high"
-  #   match:
-  #     filename: "/etc/shadow"
-  #   action: "alert"
-
-  - name: "Access to /etc/passwd"
-    description: "Access to /etc/passwd file, which contains user account information"
-    severity: "warning"
-    match:
-      filename: "/etc/passwd"
-    action: "alert"
-
-  # - name: "Access to /etc/sudoers"
-  #   description: "Access to /etc/sudoers file, which controls sudo privileges"
-  #   severity: "high"
-  #   match:
-  #     filename: "/etc/sudoers"
-  #   action: "alert"
-
-  # - name: "Access to SSH Keys"
-  #   description: "Access to SSH private keys in /root/.ssh/"
-  #   severity: "high"
-  #   match:
-  #     file_path: "/root/.ssh/"
-  #   action: "alert"
-
-  # - name: "Access to User Home Directories"
-  #   description: "Access to files in user home directories"
-  #   severity: "info"
-  #   match:
-  #     file_path: "/home/"
-  #   action: "alert"
-
-  # - name: "Access to /etc/hosts"
-  #   description: "Modification of /etc/hosts file, which may indicate DNS hijacking"
-  #   severity: "warning"
-  #   match:
-  #     filename: "/etc/hosts"
-  #   action: "alert"
-
-  # Network Connection Rules
-  - name: "Suspicious Outbound Connection"
-    description: "Network connection to potentially suspicious port (e.g., reverse shell ports)"
-    severity: "high"
+      filename: /etc/shadow
+    action: alert
+    type: file
+  - name: Suspicious Outbound Connection
+    description: Network connection to potentially suspicious port (e.g., reverse shell ports)
+    severity: high
     match:
       dest_port: 4444
-    action: "alert"
-
-  - name: "Connection to Common C2 Port"
-    description: "Connection to port 8080, commonly used for command and control"
-    severity: "warning"
+    action: alert
+    type: connect
+  - name: Connection to Common C2 Port
+    description: Connection to port 8080, commonly used for command and control
+    severity: warning
     match:
       dest_port: 8080
-    action: "alert"
-
-  - name: "HTTPS Connection from Container"
-    description: "Container making HTTPS connection (port 443)"
-    severity: "info"
-    match:
-      dest_port: 443
-      in_container: true
-    action: "alert"
-
+    action: alert
+    type: connect
