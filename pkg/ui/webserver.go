@@ -315,8 +315,17 @@ func registerAPI(mux *http.ServeMux, app *App) {
 			case <-r.Context().Done():
 				return
 			case event := <-events:
-				data, _ := json.Marshal(event)
-				fmt.Fprintf(w, "data: %s\n\n", data)
+				switch e := event.(type) {
+				case sseEvent:
+					payload, _ := json.Marshal(e.Data)
+					if e.Name != "" {
+						fmt.Fprintf(w, "event: %s\n", e.Name)
+					}
+					fmt.Fprintf(w, "data: %s\n\n", payload)
+				default:
+					data, _ := json.Marshal(event)
+					fmt.Fprintf(w, "data: %s\n\n", data)
+				}
 				flusher.Flush()
 			}
 		}

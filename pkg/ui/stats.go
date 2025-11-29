@@ -29,12 +29,15 @@ type Stats struct {
 	maxAlerts   int
 	totalAlerts atomic.Int64
 
-	onRateUpdate func(exec, file, net int64)
-
 	workloadCountFn WorkloadCountFunc
 
 	eventSubs   map[chan any]struct{}
 	eventSubsMu sync.RWMutex
+}
+
+type sseEvent struct {
+	Name string
+	Data any
 }
 
 func NewStats() *Stats {
@@ -51,10 +54,6 @@ func (s *Stats) SetWorkloadCountFunc(fn WorkloadCountFunc) {
 	s.workloadCountFn = fn
 }
 
-func (s *Stats) SetRateCallback(fn func(exec, file, net int64)) {
-	s.onRateUpdate = fn
-}
-
 func (s *Stats) rateLoop() {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -67,10 +66,6 @@ func (s *Stats) rateLoop() {
 		s.rateExec.Store(exec)
 		s.rateFile.Store(file)
 		s.rateConnect.Store(net)
-
-		if s.onRateUpdate != nil {
-			s.onRateUpdate(exec, file, net)
-		}
 	}
 }
 
@@ -184,4 +179,8 @@ func (s *Stats) PublishEvent(event any) {
 			// Channel full, skip this subscriber
 		}
 	}
+}
+
+func (s *Stats) PublishNamedEvent(name string, data any) {
+	s.PublishEvent(sseEvent{Name: name, Data: data})
 }

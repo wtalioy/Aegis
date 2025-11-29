@@ -1,5 +1,4 @@
-// API Abstraction Layer
-// Supports both Wails native mode and Web server mode
+// API Abstraction Layer for the web frontend
 
 export interface SystemStats {
     processCount: number
@@ -116,99 +115,48 @@ export interface Workload {
 type EventCallback<T> = (data: T) => void
 type UnsubscribeFn = () => void
 
-export const isWailsMode = typeof (window as any).__wails__ !== 'undefined'
-    || typeof (window as any).go !== 'undefined'
-
 export async function getSystemStats(): Promise<SystemStats> {
-    if (isWailsMode) {
-        const { GetSystemStats } = await import('../../wailsjs/go/gui/App')
-        return GetSystemStats() as Promise<SystemStats>
-    }
     const resp = await fetch('/api/stats')
     return resp.json()
 }
 
 export async function getAlerts(): Promise<Alert[]> {
-    if (isWailsMode) {
-        const { GetAlerts } = await import('../../wailsjs/go/gui/App')
-        return GetAlerts()
-    }
     const resp = await fetch('/api/alerts')
     return resp.json()
 }
 
 export async function getAncestors(pid: number): Promise<ProcessInfo[]> {
-    if (isWailsMode) {
-        const { GetAncestors } = await import('../../wailsjs/go/gui/App')
-        return GetAncestors(pid)
-    }
     const resp = await fetch(`/api/ancestors/${pid}`)
     return resp.json()
 }
 
 export async function getRules(): Promise<DetectionRule[]> {
-    if (isWailsMode) {
-        const module = await import('../../wailsjs/go/gui/App') as any
-        if (typeof module.GetRules === 'function') {
-            return module.GetRules()
-        }
-        return []
-    }
     const resp = await fetch('/api/rules')
     return resp.json()
 }
 
 export async function getProbeStats(): Promise<ProbeStats[]> {
-    if (isWailsMode) {
-        const module = await import('../../wailsjs/go/gui/App') as any
-        if (typeof module.GetProbeStats === 'function') {
-            return module.GetProbeStats()
-        }
-        return []
-    }
     const resp = await fetch('/api/probes/stats')
     return resp.json()
 }
 
 export async function getWorkloads(): Promise<Workload[]> {
-    if (isWailsMode) {
-        const module = await import('../../wailsjs/go/gui/App') as any
-        if (typeof module.GetWorkloads === 'function') {
-            return module.GetWorkloads()
-        }
-        return []
-    }
     const resp = await fetch('/api/workloads')
     return resp.json()
 }
 
 export async function getWorkload(id: string): Promise<Workload | null> {
-    if (isWailsMode) {
-        const module = await import('../../wailsjs/go/gui/App') as any
-        if (typeof module.GetWorkload === 'function') {
-            return module.GetWorkload(id)
-        }
-        return null
-    }
     const resp = await fetch(`/api/workloads/${id}`)
     if (!resp.ok) return null
     return resp.json()
 }
 
 export async function getLearningStatus(): Promise<LearningStatus> {
-    if (isWailsMode) {
-        const { GetLearningStatus } = await import('../../wailsjs/go/gui/App')
-        return GetLearningStatus()
-    }
     const resp = await fetch('/api/learning/status')
     return resp.json()
 }
 
 export async function startLearning(durationSec: number): Promise<void> {
-    if (isWailsMode) {
-        const { StartLearning } = await import('../../wailsjs/go/gui/App')
-        return StartLearning(durationSec)
-    }
     const resp = await fetch('/api/learning/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -221,10 +169,6 @@ export async function startLearning(durationSec: number): Promise<void> {
 }
 
 export async function stopLearning(): Promise<GeneratedRule[]> {
-    if (isWailsMode) {
-        const { StopLearning } = await import('../../wailsjs/go/gui/App')
-        return StopLearning()
-    }
     const resp = await fetch('/api/learning/stop', { method: 'POST' })
     if (!resp.ok) {
         const text = await resp.text()
@@ -234,10 +178,6 @@ export async function stopLearning(): Promise<GeneratedRule[]> {
 }
 
 export async function applyWhitelistRules(ruleIndices: number[]): Promise<void> {
-    if (isWailsMode) {
-        const { ApplyWhitelistRules } = await import('../../wailsjs/go/gui/App')
-        return ApplyWhitelistRules(ruleIndices)
-    }
     const resp = await fetch('/api/learning/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -250,17 +190,6 @@ export async function applyWhitelistRules(ruleIndices: number[]): Promise<void> 
 }
 
 export function subscribeToEventRates(callback: EventCallback<EventRates>): UnsubscribeFn {
-    if (isWailsMode) {
-        let cleanup: (() => void) | null = null
-
-        import('../../wailsjs/runtime/runtime').then(({ EventsOn, EventsOff }) => {
-            EventsOn('stats:rate', callback)
-            cleanup = () => EventsOff('stats:rate')
-        })
-
-        return () => cleanup?.()
-    }
-
     const eventSource = new EventSource('/api/events')
 
     eventSource.onmessage = (event) => {
@@ -278,21 +207,6 @@ let alertPollingInterval: number | null = null
 const alertListeners: Set<EventCallback<Alert[]>> = new Set()
 
 export function subscribeToAlerts(callback: EventCallback<Alert[]>): UnsubscribeFn {
-    if (isWailsMode) {
-        let cleanup: (() => void) | null = null
-
-        import('../../wailsjs/runtime/runtime').then(({ EventsOn, EventsOff }) => {
-            const handleNewAlert = async () => {
-                const alerts = await getAlerts()
-                callback(alerts)
-            }
-            EventsOn('alert:new', handleNewAlert)
-            cleanup = () => EventsOff('alert:new')
-        })
-
-        return () => cleanup?.()
-    }
-
     alertListeners.add(callback)
 
     if (alertPollingInterval === null) {
@@ -316,24 +230,6 @@ export function subscribeToAlerts(callback: EventCallback<Alert[]>): Unsubscribe
 }
 
 export function subscribeToAllEvents(callback: EventCallback<StreamEvent>): UnsubscribeFn {
-    if (isWailsMode) {
-        const cleanups: (() => void)[] = []
-
-        import('../../wailsjs/runtime/runtime').then(({ EventsOn, EventsOff }) => {
-            EventsOn('event:exec', (data: ExecEvent) => callback({ ...data, type: 'exec' }))
-            EventsOn('event:connect', (data: ConnectEvent) => callback({ ...data, type: 'connect' }))
-            EventsOn('event:file', (data: FileEvent) => callback({ ...data, type: 'file' }))
-
-            cleanups.push(
-                () => EventsOff('event:exec'),
-                () => EventsOff('event:connect'),
-                () => EventsOff('event:file')
-            )
-        })
-
-        return () => cleanups.forEach(fn => fn())
-    }
-
     const eventSource = new EventSource('/api/stream')
 
     eventSource.onmessage = (event) => {
@@ -349,19 +245,7 @@ export function subscribeToAllEvents(callback: EventCallback<StreamEvent>): Unsu
 
 // Subscribe to rules reload events
 export function subscribeToRulesReload(callback: () => void): UnsubscribeFn {
-    if (isWailsMode) {
-        let cleanup: (() => void) | null = null
-
-        import('../../wailsjs/runtime/runtime').then(({ EventsOn, EventsOff }) => {
-            EventsOn('rules:reload', callback)
-            cleanup = () => EventsOff('rules:reload')
-        })
-
-        return () => cleanup?.()
-    }
-
-    // For web mode, poll for changes (rules file watcher will trigger backend reload)
-    // We use SSE stream if available, otherwise fall back to polling
+    // back-end emits a dedicated SSE event to signal reloads
     const eventSource = new EventSource('/api/stream')
 
     eventSource.addEventListener('rules:reload', () => {

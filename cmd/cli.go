@@ -1,4 +1,4 @@
-//go:build !web && !wails
+//go:build !web
 
 package main
 

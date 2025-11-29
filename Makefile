@@ -33,15 +33,6 @@ web: bpf frontend
 	@go build -tags web -o $(BUILD)/eulerguard-web ./cmd
 	@rm -rf cmd/frontend
 
-wails: bpf frontend
-	@echo "==> Building Wails GUI..."
-	@mkdir -p $(BUILD)
-	@cp -r frontend cmd/
-	@cp wails.json cmd/
-	@cd cmd && wails build -skipbindings -tags wails
-	@mv cmd/build/bin/eulerguard-gui $(BUILD)/
-	@rm -rf cmd/frontend cmd/wails.json cmd/build
-
 # Run
 run-cli: cli
 	@sudo $(BUILD)/eulerguard
@@ -50,14 +41,9 @@ run-web: web
 	@echo "Open http://localhost:3000"
 	@sudo $(BUILD)/eulerguard-web
 
-run-wails: wails
-	@echo "Starting EulerGuard GUI..."
-	@xhost +local:root 2>/dev/null || true
-	@sudo -E DISPLAY=$(DISPLAY) XAUTHORITY=$(XAUTHORITY) $(BUILD)/eulerguard-gui
-
 # 
 clean:
-	@rm -f $(BPF_OBJ) $(BUILD)/eulerguard $(BUILD)/eulerguard-web $(BUILD)/eulerguard-gui
+	@rm -f $(BPF_OBJ) $(BUILD)/eulerguard $(BUILD)/eulerguard-web
 	@rm -rf $(BUILD)/bin cmd/frontend cmd/build
 
 clean-all: clean
@@ -66,7 +52,6 @@ clean-all: clean
 help:
 	@echo "make cli     - CLI (no frontend)"
 	@echo "make web     - Web server (:3000)"
-	@echo "make wails   - Desktop GUI"
 	@echo "make run-*   - Build and run (sudo)"
 
-.PHONY: all bpf frontend cli web wails dev run-cli run-web run-wails clean clean-all help
+.PHONY: all bpf frontend cli web dev run-cli run-web clean clean-all help

@@ -16,15 +16,7 @@ import (
 	"eulerguard/pkg/workload"
 )
 
-type EventEmitter interface {
-	Emit(eventName string, data any)
-}
-type NoopEmitter struct{}
-
-func (n *NoopEmitter) Emit(string, any) {}
-
 type Bridge struct {
-	emitter          EventEmitter
 	stats            *Stats
 	processTree      *proc.ProcessTree
 	ruleEngine       *rules.Engine
@@ -37,21 +29,9 @@ var _ events.EventHandler = (*Bridge)(nil)
 
 func NewBridge(stats *Stats) *Bridge {
 	b := &Bridge{
-		emitter: &NoopEmitter{},
-		stats:   stats,
+		stats: stats,
 	}
-	stats.SetRateCallback(func(exec, file, net int64) {
-		b.emit("stats:rate", map[string]int64{
-			"exec": exec, "file": file, "network": net,
-		})
-	})
 	return b
-}
-
-func (b *Bridge) SetEmitter(emitter EventEmitter) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.emitter = emitter
 }
 
 func (b *Bridge) SetRuleEngine(pt *proc.ProcessTree, re *rules.Engine) {
@@ -73,19 +53,9 @@ func (b *Bridge) SetProfiler(p *profiler.Profiler) {
 	b.profiler = p
 }
 
-func (b *Bridge) emit(name string, data any) {
-	b.mu.RLock()
-	e := b.emitter
-	b.mu.RUnlock()
-	if e != nil {
-		e.Emit(name, data)
-	}
-}
-
 func (b *Bridge) HandleExec(ev events.ExecEvent) {
 	b.stats.RecordExec(ev)
 	frontendEvent := ExecToFrontend(ev)
-	b.emit("event:exec", frontendEvent)
 	b.stats.PublishEvent(frontendEvent)
 
 	b.mu.RLock()
@@ -135,7 +105,6 @@ func (b *Bridge) HandleExec(ev events.ExecEvent) {
 func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 	b.stats.RecordFile()
 	frontendEvent := FileToFrontend(ev, filename)
-	b.emit("event:file", frontendEvent)
 	b.stats.PublishEvent(frontendEvent)
 
 	b.mu.RLock()
@@ -179,7 +148,6 @@ func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 func (b *Bridge) HandleConnect(ev events.ConnectEvent) {
 	b.stats.RecordConnect()
 	frontendEvent := ConnectToFrontend(ev, formatAddr(ev))
-	b.emit("event:connect", frontendEvent)
 	b.stats.PublishEvent(frontendEvent)
 
 	b.mu.RLock()
@@ -229,8 +197,12 @@ func (b *Bridge) emitAlert(alert FrontendAlert) {
 			b.workloadRegistry.RecordAlert(cgroupID)
 		}
 	}
+}
 
-	b.emit("alert:new", alert)
+func (b *Bridge) NotifyRulesReload() {
+	b.stats.PublishNamedEvent("rules:reload", map[string]int64{
+		"timestamp": time.Now().UnixMilli(),
+	})
 }
 
 func formatAddr(ev events.ConnectEvent) string {

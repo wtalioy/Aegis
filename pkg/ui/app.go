@@ -35,10 +35,10 @@ type App struct {
 		duration  time.Duration
 	}
 
-	ready        chan struct{}
-	stopWatcher  chan struct{}
-	watcherMu    sync.Mutex
-	lastRuleMod  time.Time
+	ready       chan struct{}
+	stopWatcher chan struct{}
+	watcherMu   sync.Mutex
+	lastRuleMod time.Time
 }
 
 func NewApp(opts config.Options) *App {
@@ -124,7 +124,7 @@ func (a *App) watchRulesFile() {
 					log.Printf("Failed to reload rules: %v", err)
 				} else {
 					log.Println("Rules reloaded due to file change")
-					a.bridge.emit("rules:reload", nil)
+					a.bridge.NotifyRulesReload()
 				}
 			} else {
 				a.watcherMu.Unlock()
