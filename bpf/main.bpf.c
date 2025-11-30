@@ -176,7 +176,6 @@ int BPF_PROG(lsm_bprm_check, struct linux_binprm* bprm)
     event->pid = pid;
     event->ppid = get_parent_pid(task);
     event->cgroup_id = bpf_get_current_cgroup_id();
-    event->blocked = blocked;
     __builtin_memcpy(event->filename, s->path_buf, PATH_MAX_LEN);
     bpf_get_current_comm(&event->comm, sizeof(event->comm));
 
@@ -187,6 +186,7 @@ int BPF_PROG(lsm_bprm_check, struct linux_binprm* bprm)
         event->pcomm[0] = '\0';
     }
 
+    event->blocked = blocked;
     bpf_ringbuf_submit(event, 0);
     return ret;
 }
@@ -225,8 +225,8 @@ int BPF_PROG(lsm_file_open, struct file* file)
     event->pid = pid;
     event->cgroup_id = bpf_get_current_cgroup_id();
     event->flags = BPF_CORE_READ(file, f_flags);
-    event->blocked = blocked;
     __builtin_memcpy(event->filename, s->path_buf, PATH_MAX_LEN);
+    event->blocked = blocked;
     bpf_ringbuf_submit(event, 0);
 
     return ret;
@@ -280,7 +280,6 @@ int BPF_PROG(lsm_socket_connect, struct socket* sock, struct sockaddr* address, 
     event->cgroup_id = bpf_get_current_cgroup_id();
     event->family = family;
     event->port = port;
-    event->blocked = blocked;
     event->addr_v4 = 0;
     __builtin_memset(event->addr_v6, 0, 16);
 
@@ -292,6 +291,7 @@ int BPF_PROG(lsm_socket_connect, struct socket* sock, struct sockaddr* address, 
         bpf_probe_read_kernel(event->addr_v6, 16, &addr_in6->sin6_addr);
     }
 
+    event->blocked = blocked;
     bpf_ringbuf_submit(event, 0);
     return ret;
 }

@@ -13,6 +13,13 @@ type fileMatcher struct {
 	filepathRules      []*Rule
 }
 
+func normalizeFilename(path string) string {
+	for len(path) > 0 && path[0] == '/' {
+		path = path[1:]
+	}
+	return path
+}
+
 func newFileMatcher(rules []Rule) *fileMatcher {
 	matcher := &fileMatcher{
 		exactFilenameRules: make(map[string][]*Rule),
@@ -21,8 +28,9 @@ func newFileMatcher(rules []Rule) *fileMatcher {
 	for i := range rules {
 		rule := &rules[i]
 		if rule.Match.Filename != "" {
-			matcher.exactFilenameRules[rule.Match.Filename] = append(
-				matcher.exactFilenameRules[rule.Match.Filename], rule)
+			normalizedName := normalizeFilename(rule.Match.Filename)
+			matcher.exactFilenameRules[normalizedName] = append(
+				matcher.exactFilenameRules[normalizedName], rule)
 		}
 		if rule.Match.FilePath != "" {
 			matcher.filepathRules = append(matcher.filepathRules, rule)
@@ -38,7 +46,8 @@ func (m *fileMatcher) Match(filename string, pid uint32, cgroupID uint64) (match
 
 func (m *fileMatcher) getCandidateRules(filename string) []*Rule {
 	var candidates []*Rule
-	if rules, ok := m.exactFilenameRules[filename]; ok {
+	normalizedName := normalizeFilename(filename)
+	if rules, ok := m.exactFilenameRules[normalizedName]; ok {
 		candidates = append(candidates, rules...)
 	}
 	candidates = append(candidates, m.filepathRules...)
@@ -50,8 +59,12 @@ func (m *fileMatcher) matchRule(rule *Rule, event fileEvent) bool {
 	if match.Filename == "" && match.FilePath == "" {
 		return false
 	}
-	if match.Filename != "" && event.filename != match.Filename {
-		return false
+	if match.Filename != "" {
+		normalizedRule := normalizeFilename(match.Filename)
+		normalizedEvent := normalizeFilename(event.filename)
+		if normalizedEvent != normalizedRule {
+			return false
+		}
 	}
 	if match.FilePath != "" && !strings.HasPrefix(event.filename, match.FilePath) {
 		return false

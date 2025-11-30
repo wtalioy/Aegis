@@ -87,8 +87,8 @@ func registerAPI(mux *http.ServeMux, app *App) {
 			if i > 0 {
 				w.Write([]byte(","))
 			}
-			fmt.Fprintf(w, `{"id":"%s","timestamp":%d,"severity":"%s","ruleName":"%s","description":"%s","pid":%d,"processName":"%s","cgroupId":"%s"}`,
-				a.ID, a.Timestamp, a.Severity, a.RuleName, a.Description, a.PID, a.ProcessName, a.CgroupID)
+			fmt.Fprintf(w, `{"id":"%s","timestamp":%d,"severity":"%s","ruleName":"%s","description":"%s","pid":%d,"processName":"%s","cgroupId":"%s","action":"%s","blocked":%t}`,
+				a.ID, a.Timestamp, a.Severity, a.RuleName, a.Description, a.PID, a.ProcessName, a.CgroupID, a.Action, a.Blocked)
 		}
 		w.Write([]byte("]"))
 	})
