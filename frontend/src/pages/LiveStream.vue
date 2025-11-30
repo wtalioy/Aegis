@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { RecycleScroller } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
-import { Radio } from 'lucide-vue-next'
+import { Radio, Search, X } from 'lucide-vue-next'
 import StreamControls from '../components/stream/StreamControls.vue'
 import EventRow from '../components/stream/EventRow.vue'
 import EventDetailsPanel from '../components/stream/EventDetailsPanel.vue'
@@ -21,10 +21,26 @@ const filters = ref({
   workloadId: '' // Filter by specific workload (cgroup ID)
 })
 
+// Search query for hunting similar events
+const huntQuery = ref<{ type: string; value: string } | null>(null)
+
 const filteredEvents = computed(() => {
   const filtered = events.value.filter(event => {
     if (!filters.value[event.type]) return false
     if (filters.value.workloadId && event.cgroupId !== filters.value.workloadId) return false
+
+    // Apply hunt filter if active
+    if (huntQuery.value) {
+      if (huntQuery.value.type === 'exec' && event.type === 'exec') {
+        return event.comm === huntQuery.value.value
+      } else if (huntQuery.value.type === 'connect' && event.type === 'connect') {
+        return String(event.port) === huntQuery.value.value
+      } else if (huntQuery.value.type === 'file' && event.type === 'file') {
+        return event.filename.includes(huntQuery.value.value)
+      }
+      return false
+    }
+
     return true
   })
   return [...filtered].sort((a, b) => b.timestamp - a.timestamp)
@@ -37,7 +53,7 @@ const handleEvent = (event: StreamEvent) => {
 
   const eventWithId = { ...event, id: `evt-${eventIdCounter++}` }
   events.value.push(eventWithId)
-  
+
   if (events.value.length > MAX_BUFFER_SIZE) {
     events.value = events.value.slice(-MAX_BUFFER_SIZE)
   }
@@ -61,9 +77,20 @@ const closeDetails = () => {
 }
 
 const huntSimilar = (event: StreamEvent) => {
+  // Set hunt filter based on event type
   if (event.type === 'exec') {
-    console.log('Hunt similar exec:', event.comm)
+    huntQuery.value = { type: 'exec', value: event.comm }
+  } else if (event.type === 'connect') {
+    huntQuery.value = { type: 'connect', value: String(event.port) }
+  } else if (event.type === 'file') {
+    huntQuery.value = { type: 'file', value: event.filename }
   }
+  // Close the details panel to focus on results
+  selectedEvent.value = null
+}
+
+const clearHunt = () => {
+  huntQuery.value = null
 }
 
 onMounted(() => {
@@ -91,14 +118,17 @@ onUnmounted(() => {
     <!-- Main Content -->
     <div class="stream-container">
       <!-- Controls -->
-      <StreamControls
-        :is-paused="isPaused"
-        :event-count="events.length"
-        :filters="filters"
-        @toggle-pause="togglePause"
-        @clear="clearEvents"
-        @update:filters="filters = $event"
-      />
+      <StreamControls :is-paused="isPaused" :event-count="events.length" :filters="filters" @toggle-pause="togglePause"
+        @clear="clearEvents" @update:filters="filters = $event" />
+
+      <!-- Hunt Filter Indicator -->
+      <div v-if="huntQuery" class="hunt-indicator">
+        <Search :size="14" />
+        <span>Hunting: <strong>{{ huntQuery.value }}</strong> ({{ huntQuery.type }})</span>
+        <button class="hunt-clear" @click="clearHunt">
+          <X :size="14" />
+        </button>
+      </div>
 
       <!-- Table Header -->
       <div class="table-header">
@@ -110,42 +140,30 @@ onUnmounted(() => {
       </div>
 
       <!-- Event List with Virtual Scrolling -->
-      <div class="table-wrapper" :class="{ 'has-panel': selectedEvent }">
-        <RecycleScroller
-          v-if="filteredEvents.length > 0"
-          class="scroller"
-          :items="filteredEvents"
-          :item-size="40"
-          key-field="id"
-          v-slot="{ item }"
-        >
-          <EventRow
-            :event="item"
-            :is-selected="selectedEvent?.id === item.id"
-            @select="selectEvent"
-          />
-        </RecycleScroller>
+      <div class="table-content" :class="{ 'has-panel': selectedEvent }">
+        <div class="table-wrapper">
+          <RecycleScroller v-if="filteredEvents.length > 0" class="scroller" :items="filteredEvents" :item-size="40"
+            key-field="id" v-slot="{ item }">
+            <EventRow :event="item" :is-selected="selectedEvent?.id === item.id" @select="selectEvent" />
+          </RecycleScroller>
 
-        <!-- Empty State -->
-        <div v-else class="empty-state">
-          <div class="empty-icon">📡</div>
-          <div class="empty-title">
-            {{ events.length === 0 ? 'Waiting for events...' : 'No matching events' }}
-          </div>
-          <div class="empty-description">
-            {{ events.length === 0 
-              ? 'Events will appear here as they are captured by eBPF probes'
-              : 'Try adjusting your filters to see more events' 
-            }}
+          <!-- Empty State -->
+          <div v-else class="empty-state">
+            <div class="empty-icon">📡</div>
+            <div class="empty-title">
+              {{ events.length === 0 ? 'Waiting for events...' : 'No matching events' }}
+            </div>
+            <div class="empty-description">
+              {{ events.length === 0
+                ? 'Events will appear here as they are captured by eBPF probes'
+                : 'Try adjusting your filters to see more events'
+              }}
+            </div>
           </div>
         </div>
 
         <!-- Details Panel -->
-        <EventDetailsPanel
-          :event="selectedEvent"
-          @close="closeDetails"
-          @hunt-similar="huntSimilar"
-        />
+        <EventDetailsPanel :event="selectedEvent" @close="closeDetails" @hunt-similar="huntSimilar" />
       </div>
     </div>
   </div>
@@ -192,8 +210,15 @@ onUnmounted(() => {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .page-subtitle {
@@ -213,6 +238,35 @@ onUnmounted(() => {
   min-height: 0;
 }
 
+/* Hunt Indicator */
+.hunt-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--status-info-dim);
+  border-bottom: 1px solid var(--status-info);
+  font-size: 12px;
+  color: var(--status-info);
+}
+
+.hunt-indicator strong {
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.hunt-clear {
+  margin-left: auto;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  color: var(--status-info);
+  transition: all var(--transition-fast);
+}
+
+.hunt-clear:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 /* Table Header */
 .table-header {
   display: grid;
@@ -229,16 +283,22 @@ onUnmounted(() => {
   letter-spacing: 0.05em;
 }
 
+/* Table Content - horizontal flex container */
+.table-content {
+  flex: 1;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
 /* Table Wrapper */
 .table-wrapper {
   flex: 1;
   position: relative;
   overflow: hidden;
   min-height: 0;
-}
-
-.table-wrapper.has-panel {
-  margin-right: 380px;
+  transition: flex var(--transition-normal);
 }
 
 .scroller {

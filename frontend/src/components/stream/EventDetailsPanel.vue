@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { X, Copy, Search, Terminal, Globe, FileText } from 'lucide-vue-next'
+import { X, Copy, Search, Terminal, Globe, FileText, Check } from 'lucide-vue-next'
 import type { StreamEvent, ProcessInfo } from '../../lib/api'
 import { getAncestors } from '../../lib/api'
 
@@ -10,13 +10,14 @@ const props = defineProps<{
   event: EventWithId | null
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   close: []
   huntSimilar: [event: EventWithId]
 }>()
 
 const ancestors = ref<ProcessInfo[]>([])
 const loadingAncestors = ref(false)
+const copySuccess = ref(false)
 
 const formatTime = (timestamp: number) => {
   return new Date(timestamp).toLocaleString('en-US', {
@@ -29,9 +30,23 @@ const formatTime = (timestamp: number) => {
   })
 }
 
-const copyEventJson = () => {
+const copyEventJson = async () => {
   if (props.event) {
-    navigator.clipboard.writeText(JSON.stringify(props.event, null, 2))
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(props.event, null, 2))
+      copySuccess.value = true
+      setTimeout(() => {
+        copySuccess.value = false
+      }, 2000)
+    } catch (e) {
+      console.error('Failed to copy:', e)
+    }
+  }
+}
+
+const handleHuntSimilar = () => {
+  if (props.event) {
+    emit('huntSimilar', props.event)
   }
 }
 
@@ -161,11 +176,12 @@ watch(() => props.event, async (newEvent) => {
 
       <!-- Actions -->
       <div class="panel-actions">
-        <button class="action-btn" @click="copyEventJson">
-          <Copy :size="14" />
-          Copy JSON
+        <button class="action-btn" :class="{ success: copySuccess }" @click="copyEventJson">
+          <Check v-if="copySuccess" :size="14" />
+          <Copy v-else :size="14" />
+          {{ copySuccess ? 'Copied!' : 'Copy JSON' }}
         </button>
-        <button class="action-btn" @click="$emit('huntSimilar', event)">
+        <button class="action-btn" @click="handleHuntSimilar">
           <Search :size="14" />
           Hunt Similar
         </button>
@@ -176,26 +192,27 @@ watch(() => props.event, async (newEvent) => {
 
 <style scoped>
 .details-panel {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
   width: 380px;
+  min-width: 380px;
+  max-width: 380px;
   background: var(--bg-surface);
   border-left: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  z-index: 10;
+  height: 100%;
+  overflow: hidden;
 }
 
 .slide-enter-active,
 .slide-leave-active {
-  transition: transform 0.2s ease;
+  transition: all 0.25s ease;
 }
 
 .slide-enter-from,
 .slide-leave-to {
-  transform: translateX(100%);
+  opacity: 0;
+  transform: translateX(20px);
+  margin-left: -380px;
 }
 
 .panel-header {
@@ -389,6 +406,11 @@ watch(() => props.event, async (newEvent) => {
 .action-btn:hover {
   background: var(--bg-overlay);
   color: var(--text-primary);
+}
+
+.action-btn.success {
+  background: var(--status-safe-dim);
+  color: var(--status-safe);
 }
 </style>
 
