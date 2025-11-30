@@ -3,7 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { 
   Boxes, RefreshCw, ArrowUpDown, Activity, FileText, Network, 
-  AlertTriangle, ChevronRight, Clock, Play, Bell
+  ChevronRight, Clock, Play, ShieldOff, AlertTriangle, ShieldCheck, Shield
 } from 'lucide-vue-next'
 import Card from '../components/common/Card.vue'
 import { getWorkloads, type Workload } from '../lib/api'
@@ -90,6 +90,13 @@ const workloadColor = (id: string) => {
   return `hsl(${hue}, 60%, 50%)`
 }
 
+// Security status for workload
+const getSecurityStatus = (w: Workload) => {
+  // In the future, this would check blocked count too
+  if (w.alertCount > 0) return 'alert'
+  return 'ok'
+}
+
 const totalEvents = computed(() => {
   return workloads.value.reduce((sum, w) => 
     sum + w.execCount + w.fileCount + w.connectCount, 0)
@@ -117,11 +124,15 @@ onMounted(() => {
   <div class="workloads-page">
     <div class="page-header">
       <div class="header-content">
-        <h1 class="page-title">
-          <Boxes :size="24" class="title-icon" />
-          Workloads
-        </h1>
-        <span class="page-subtitle">Active cgroup-based workload groups</span>
+        <div class="header-title">
+          <div class="title-icon">
+            <Boxes :size="22" />
+          </div>
+          <div>
+            <h1 class="page-title">Workloads</h1>
+            <span class="page-subtitle">Active cgroup-based workload groups</span>
+          </div>
+        </div>
       </div>
       <button class="refresh-btn" @click="fetchWorkloads" :disabled="loading">
         <RefreshCw :size="16" :class="{ spinning: loading }" />
@@ -131,17 +142,32 @@ onMounted(() => {
 
     <!-- Stats Row -->
     <div class="stats-row">
-      <div class="stat-item">
-        <span class="stat-value">{{ workloads.length }}</span>
-        <span class="stat-label">Workloads</span>
+      <div class="stat-card">
+        <div class="stat-icon-wrap workloads">
+          <Boxes :size="20" />
+        </div>
+        <div class="stat-content">
+          <span class="stat-value">{{ workloads.length }}</span>
+          <span class="stat-label">Workloads</span>
+        </div>
       </div>
-      <div class="stat-item">
-        <span class="stat-value">{{ totalEvents }}</span>
-        <span class="stat-label">Total Events</span>
+      <div class="stat-card">
+        <div class="stat-icon-wrap events">
+          <Activity :size="20" />
+        </div>
+        <div class="stat-content">
+          <span class="stat-value">{{ totalEvents }}</span>
+          <span class="stat-label">Total Events</span>
+        </div>
       </div>
-      <div class="stat-item" :class="{ 'has-alerts': totalAlerts > 0 }">
-        <span class="stat-value">{{ totalAlerts }}</span>
-        <span class="stat-label">Alerts</span>
+      <div class="stat-card" :class="{ alert: totalAlerts > 0 }">
+        <div class="stat-icon-wrap" :class="totalAlerts > 0 ? 'alert' : 'safe'">
+          <component :is="totalAlerts > 0 ? AlertTriangle : ShieldCheck" :size="20" />
+        </div>
+        <div class="stat-content">
+          <span class="stat-value">{{ totalAlerts }}</span>
+          <span class="stat-label">Security Events</span>
+        </div>
       </div>
     </div>
 
@@ -160,8 +186,8 @@ onMounted(() => {
                 Activity
                 <ArrowUpDown :size="12" class="sort-icon" />
               </th>
-              <th class="col-alerts" @click="toggleSort('alertCount')">
-                Status
+              <th class="col-status" @click="toggleSort('alertCount')">
+                Security Status
                 <ArrowUpDown :size="12" class="sort-icon" />
               </th>
               <th class="col-last" @click="toggleSort('lastSeen')">
@@ -174,7 +200,10 @@ onMounted(() => {
             <template v-for="w in sortedWorkloads" :key="w.id">
               <tr 
                 class="workload-row" 
-                :class="{ expanded: expandedId === w.id, 'has-alerts': w.alertCount > 0 }"
+                :class="[
+                  { expanded: expandedId === w.id },
+                  `status-${getSecurityStatus(w)}`
+                ]"
                 @click="toggleExpand(w.id)"
               >
                 <td class="col-expand">
@@ -209,12 +238,15 @@ onMounted(() => {
                     </span>
                   </div>
                 </td>
-                <td class="col-alerts">
-                  <div v-if="w.alertCount > 0" class="alert-indicator">
+                <td class="col-status">
+                  <div v-if="w.alertCount > 0" class="status-badge alert">
                     <AlertTriangle :size="14" />
-                    <span>{{ w.alertCount }}</span>
+                    <span>{{ w.alertCount }} Alert{{ w.alertCount > 1 ? 's' : '' }}</span>
                   </div>
-                  <span v-else class="status-ok">OK</span>
+                  <div v-else class="status-badge ok">
+                    <ShieldCheck :size="14" />
+                    <span>Secure</span>
+                  </div>
                 </td>
                 <td class="col-last">
                   <span class="last-seen">{{ formatRelativeTime(w.lastSeen) }}</span>
@@ -231,47 +263,46 @@ onMounted(() => {
                         <div class="detail-stats">
                           <div class="detail-stat">
                             <Play :size="16" class="stat-icon exec" />
-                            <div class="stat-content">
+                            <div class="stat-info">
                               <span class="stat-num">{{ w.execCount }}</span>
                               <span class="stat-name">Process Executions</span>
                             </div>
                           </div>
                           <div class="detail-stat">
                             <FileText :size="16" class="stat-icon file" />
-                            <div class="stat-content">
+                            <div class="stat-info">
                               <span class="stat-num">{{ w.fileCount }}</span>
                               <span class="stat-name">File Operations</span>
                             </div>
                           </div>
                           <div class="detail-stat">
                             <Network :size="16" class="stat-icon net" />
-                            <div class="stat-content">
+                            <div class="stat-info">
                               <span class="stat-num">{{ w.connectCount }}</span>
                               <span class="stat-name">Network Connections</span>
-                            </div>
-                          </div>
-                          <div class="detail-stat" :class="{ 'has-alerts': w.alertCount > 0 }">
-                            <Bell :size="16" class="stat-icon alert" />
-                            <div class="stat-content">
-                              <span class="stat-num">{{ w.alertCount }}</span>
-                              <span class="stat-name">Security Alerts</span>
                             </div>
                           </div>
                         </div>
                       </div>
                       
                       <div class="detail-section">
-                        <h4>Timeline</h4>
-                        <div class="timeline-info">
-                          <div class="timeline-item">
-                            <Clock :size="14" />
-                            <span class="timeline-label">First seen:</span>
-                            <span class="timeline-value">{{ formatTime(w.firstSeen) }}</span>
+                        <h4>Security & Timeline</h4>
+                        <div class="security-timeline">
+                          <div class="security-status" :class="getSecurityStatus(w)">
+                            <component :is="w.alertCount > 0 ? AlertTriangle : ShieldCheck" :size="18" />
+                            <span class="security-label">{{ w.alertCount > 0 ? `${w.alertCount} Security Alert${w.alertCount > 1 ? 's' : ''}` : 'No Security Issues' }}</span>
                           </div>
-                          <div class="timeline-item">
-                            <Activity :size="14" />
-                            <span class="timeline-label">Last active:</span>
-                            <span class="timeline-value">{{ formatTime(w.lastSeen) }}</span>
+                          <div class="timeline-info">
+                            <div class="timeline-item">
+                              <Clock :size="14" />
+                              <span class="timeline-label">First seen:</span>
+                              <span class="timeline-value">{{ formatTime(w.firstSeen) }}</span>
+                            </div>
+                            <div class="timeline-item">
+                              <Activity :size="14" />
+                              <span class="timeline-label">Last active:</span>
+                              <span class="timeline-value">{{ formatTime(w.lastSeen) }}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -311,37 +342,43 @@ onMounted(() => {
 <style scoped>
 .workloads-page {
   max-width: 1400px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .page-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
 }
 
-.header-content {
+.header-title {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 14px;
+}
+
+.title-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, var(--accent-primary), #3b82f6);
+  border-radius: var(--radius-md);
+  color: #fff;
 }
 
 .page-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
 }
 
-.title-icon {
-  color: var(--accent-primary);
-}
-
 .page-subtitle {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-muted);
 }
 
@@ -349,8 +386,9 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
-  background: var(--bg-overlay);
+  padding: 10px 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   font-size: 13px;
   color: var(--text-secondary);
@@ -358,8 +396,9 @@ onMounted(() => {
 }
 
 .refresh-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
+  background: var(--bg-overlay);
   color: var(--text-primary);
+  border-color: var(--border-default);
 }
 
 .refresh-btn:disabled {
@@ -378,34 +417,62 @@ onMounted(() => {
 
 /* Stats Row */
 .stats-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
-  margin-bottom: 24px;
 }
 
-.stat-item {
-  flex: 1;
-  max-width: 180px;
+.stat-card {
   display: flex;
-  flex-direction: column;
-  padding: 16px 24px;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
   background: var(--bg-surface);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
-  text-align: center;
 }
 
-.stat-item.has-alerts {
-  border-color: var(--status-critical);
-  background: color-mix(in srgb, var(--status-critical) 5%, var(--bg-surface));
+.stat-card.alert {
+  border-color: var(--status-warning);
+  background: linear-gradient(135deg, var(--status-warning-dim), var(--bg-surface) 60%);
 }
 
-.stat-item.has-alerts .stat-value {
-  color: var(--status-critical);
+.stat-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+}
+
+.stat-icon-wrap.workloads {
+  background: rgba(99, 102, 241, 0.15);
+  color: #6366f1;
+}
+
+.stat-icon-wrap.events {
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--chart-exec);
+}
+
+.stat-icon-wrap.safe {
+  background: var(--status-safe-dim);
+  color: var(--status-safe);
+}
+
+.stat-icon-wrap.alert {
+  background: var(--status-warning-dim);
+  color: var(--status-warning);
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
 }
 
 .stat-value {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 700;
   font-family: var(--font-mono);
   color: var(--text-primary);
@@ -414,7 +481,6 @@ onMounted(() => {
 .stat-label {
   font-size: 12px;
   color: var(--text-muted);
-  margin-top: 4px;
 }
 
 /* Table */
@@ -432,7 +498,7 @@ onMounted(() => {
 }
 
 .workloads-table th {
-  padding: 12px 16px;
+  padding: 14px 16px;
   text-align: left;
   font-size: 11px;
   font-weight: 600;
@@ -475,8 +541,8 @@ onMounted(() => {
   background: var(--bg-overlay);
 }
 
-.workload-row.has-alerts {
-  border-left: 3px solid var(--status-critical);
+.workload-row.status-alert {
+  border-left: 3px solid var(--status-warning);
 }
 
 .workloads-table td {
@@ -530,7 +596,7 @@ onMounted(() => {
 /* Activity Summary */
 .activity-summary {
   display: flex;
-  gap: 12px;
+  gap: 8px;
 }
 
 .activity-item {
@@ -550,33 +616,34 @@ onMounted(() => {
   background: var(--bg-overlay);
 }
 
-.activity-item svg {
-  opacity: 0.7;
-}
-
-/* Alert Indicator */
-.alert-indicator {
+/* Status Badge */
+.status-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--status-critical);
-  font-size: 13px;
-  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
 }
 
-.alert-indicator svg {
+.status-badge.ok {
+  background: var(--status-safe-dim);
+  color: var(--status-safe);
+}
+
+.status-badge.alert {
+  background: var(--status-warning-dim);
+  color: var(--status-warning);
+}
+
+.status-badge.alert svg {
   animation: pulse 2s ease-in-out infinite;
 }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
-}
-
-.status-ok {
-  color: var(--status-ok);
-  font-size: 12px;
-  font-weight: 500;
 }
 
 .last-seen {
@@ -608,40 +675,34 @@ onMounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
-  margin: 0 0 12px 0;
+  margin: 0 0 14px 0;
 }
 
 .detail-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .detail-stat {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
+  padding: 12px 14px;
   background: var(--bg-surface);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
-}
-
-.detail-stat.has-alerts {
-  border-color: var(--status-critical);
-  background: color-mix(in srgb, var(--status-critical) 8%, var(--bg-surface));
 }
 
 .stat-icon {
   color: var(--text-muted);
 }
 
-.stat-icon.exec { color: var(--accent-primary); }
-.stat-icon.file { color: var(--status-warning); }
-.stat-icon.net { color: var(--status-info); }
-.stat-icon.alert { color: var(--status-critical); }
+.stat-icon.exec { color: var(--chart-exec); }
+.stat-icon.file { color: var(--chart-file); }
+.stat-icon.net { color: var(--chart-network); }
 
-.stat-content {
+.stat-info {
   display: flex;
   flex-direction: column;
 }
@@ -656,6 +717,36 @@ onMounted(() => {
 .stat-name {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+/* Security Timeline */
+.security-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.security-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+}
+
+.security-status.ok {
+  background: var(--status-safe-dim);
+  color: var(--status-safe);
+}
+
+.security-status.alert {
+  background: var(--status-warning-dim);
+  color: var(--status-warning);
+}
+
+.security-label {
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .timeline-info {
@@ -700,46 +791,28 @@ onMounted(() => {
   border: 1px solid transparent;
   cursor: pointer;
   transition: all var(--transition-fast);
-  min-width: 140px;
-  height: 40px;
 }
 
 .action-btn.primary {
   background: var(--accent-primary);
   color: #fff;
-  border-color: var(--accent-primary);
 }
 
 .action-btn.primary:hover {
   background: var(--accent-hover);
-  border-color: var(--accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent-primary) 30%, transparent);
-}
-
-.action-btn.secondary {
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  border-color: var(--border-subtle);
-}
-
-.action-btn.secondary:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--border-default);
 }
 
 .action-btn.alert {
-  background: color-mix(in srgb, var(--status-critical) 12%, var(--bg-surface));
-  color: var(--status-critical);
-  border-color: color-mix(in srgb, var(--status-critical) 40%, transparent);
+  background: var(--status-warning-dim);
+  color: var(--status-warning);
+  border-color: var(--status-warning);
 }
 
 .action-btn.alert:hover {
-  background: color-mix(in srgb, var(--status-critical) 20%, var(--bg-surface));
-  border-color: var(--status-critical);
+  background: var(--status-warning);
+  color: #fff;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--status-critical) 20%, transparent);
 }
 
 /* Empty State */
@@ -768,5 +841,15 @@ onMounted(() => {
 .empty-desc {
   font-size: 14px;
   color: var(--text-muted);
+}
+
+@media (max-width: 900px) {
+  .stats-row {
+    grid-template-columns: 1fr;
+  }
+
+  .details-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { FileCode, Terminal, Globe, FileText, RefreshCw, Search, Filter, Shield, ShieldCheck } from 'lucide-vue-next'
+import { 
+  FileCode, Terminal, Globe, FileText, RefreshCw, Search, Filter, 
+  ShieldOff, AlertTriangle, ShieldCheck, Zap
+} from 'lucide-vue-next'
 import RuleCard from '../components/rules/RuleCard.vue'
 import { getRules, subscribeToRulesReload, type Rule } from '../lib/api'
 
@@ -59,40 +62,35 @@ const filteredRules = computed(() => {
 })
 
 const groupedRules = computed(() => {
-  const alertRules: Record<string, Rule[]> = { exec: [], file: [], connect: [] }
-  const allowRules: Record<string, Rule[]> = { exec: [], file: [], connect: [] }
+  const blockRules: Rule[] = []
+  const alertRules: Rule[] = []
+  const allowRules: Rule[] = []
   
   filteredRules.value.forEach(rule => {
-    const target = rule.action === 'allow' ? allowRules : alertRules
-    const ruleType = deriveRuleType(rule)
-    if (target[ruleType]) {
-      target[ruleType].push(rule)
+    if (rule.action === 'block') {
+      blockRules.push(rule)
+    } else if (rule.action === 'allow') {
+      allowRules.push(rule)
+    } else {
+      alertRules.push(rule)
     }
   })
 
-  return { alert: alertRules, allow: allowRules }
+  return { block: blockRules, alert: alertRules, allow: allowRules }
 })
 
 const stats = computed(() => ({
   total: rules.value.length,
-  alert: rules.value.filter(r => r.action !== 'allow').length,
+  block: rules.value.filter(r => r.action === 'block').length,
+  alert: rules.value.filter(r => r.action === 'alert' || r.action === 'log').length,
   allow: rules.value.filter(r => r.action === 'allow').length,
-  exec: rules.value.filter(r => r.type === 'exec').length,
-  file: rules.value.filter(r => r.type === 'file').length,
-  connect: rules.value.filter(r => r.type === 'connect').length,
 }))
 
-const hasAlertRules = computed(() => 
-  groupedRules.value.alert.exec.length > 0 ||
-  groupedRules.value.alert.file.length > 0 ||
-  groupedRules.value.alert.connect.length > 0
-)
-
-const hasAllowRules = computed(() => 
-  groupedRules.value.allow.exec.length > 0 ||
-  groupedRules.value.allow.file.length > 0 ||
-  groupedRules.value.allow.connect.length > 0
-)
+const typeStats = computed(() => ({
+  exec: filteredRules.value.filter(r => deriveRuleType(r) === 'exec').length,
+  file: filteredRules.value.filter(r => deriveRuleType(r) === 'file').length,
+  connect: filteredRules.value.filter(r => deriveRuleType(r) === 'connect').length,
+}))
 
 onMounted(() => {
   fetchRules()
@@ -111,38 +109,46 @@ onUnmounted(() => {
     <!-- Header -->
     <div class="page-header">
       <div class="header-content">
-        <h1 class="page-title">
-          <FileCode :size="24" class="title-icon" />
-          Detection Rules
-        </h1>
-        <span class="page-subtitle">Manage security detection rules</span>
+        <div class="header-title">
+          <div class="title-icon">
+            <FileCode :size="22" />
+          </div>
+          <div>
+            <h1 class="page-title">Security Rules</h1>
+            <span class="page-subtitle">LSM enforcement and detection rules</span>
+          </div>
+        </div>
       </div>
-      <div class="header-stats">
-        <div class="stat-item alert">
-          <Shield :size="14" class="stat-icon" />
+      
+      <!-- Action Stats -->
+      <div class="action-stats">
+        <button 
+          class="action-stat block" 
+          :class="{ active: filterAction === 'block' }"
+          @click="filterAction = filterAction === 'block' ? 'all' : 'block'"
+        >
+          <ShieldOff :size="16" />
+          <span class="stat-value">{{ stats.block }}</span>
+          <span class="stat-label">Block</span>
+        </button>
+        <button 
+          class="action-stat alert"
+          :class="{ active: filterAction === 'alert' }"
+          @click="filterAction = filterAction === 'alert' ? 'all' : 'alert'"
+        >
+          <AlertTriangle :size="16" />
           <span class="stat-value">{{ stats.alert }}</span>
           <span class="stat-label">Alert</span>
-        </div>
-        <div class="stat-item allow">
-          <ShieldCheck :size="14" class="stat-icon" />
+        </button>
+        <button 
+          class="action-stat allow"
+          :class="{ active: filterAction === 'allow' }"
+          @click="filterAction = filterAction === 'allow' ? 'all' : 'allow'"
+        >
+          <ShieldCheck :size="16" />
           <span class="stat-value">{{ stats.allow }}</span>
           <span class="stat-label">Allow</span>
-        </div>
-        <div class="stat-item">
-          <Terminal :size="14" class="stat-icon exec" />
-          <span class="stat-value">{{ stats.exec }}</span>
-          <span class="stat-label">Exec</span>
-        </div>
-        <div class="stat-item">
-          <FileText :size="14" class="stat-icon file" />
-          <span class="stat-value">{{ stats.file }}</span>
-          <span class="stat-label">File</span>
-        </div>
-        <div class="stat-item">
-          <Globe :size="14" class="stat-icon connect" />
-          <span class="stat-value">{{ stats.connect }}</span>
-          <span class="stat-label">Network</span>
-        </div>
+        </button>
       </div>
     </div>
 
@@ -160,21 +166,17 @@ onUnmounted(() => {
 
       <div class="filter-group">
         <Filter :size="14" class="filter-icon" />
-        <select v-model="filterAction" class="filter-select">
-          <option value="all">All Actions</option>
-          <option value="alert">Alert Rules</option>
-          <option value="allow">Allow Rules</option>
-        </select>
-
+        
         <select v-model="filterType" class="filter-select">
           <option value="all">All Types</option>
-          <option value="exec">Exec</option>
-          <option value="file">File</option>
-          <option value="connect">Network</option>
+          <option value="exec">Exec ({{ typeStats.exec }})</option>
+          <option value="file">File ({{ typeStats.file }})</option>
+          <option value="connect">Network ({{ typeStats.connect }})</option>
         </select>
 
         <select v-model="filterSeverity" class="filter-select">
           <option value="all">All Severity</option>
+          <option value="critical">Critical</option>
           <option value="high">High</option>
           <option value="warning">Warning</option>
           <option value="info">Info</option>
@@ -187,6 +189,22 @@ onUnmounted(() => {
       </button>
     </div>
 
+    <!-- Type Legend -->
+    <div class="type-legend">
+      <div class="legend-item">
+        <Terminal :size="14" class="exec" />
+        <span>Process Exec</span>
+      </div>
+      <div class="legend-item">
+        <FileText :size="14" class="file" />
+        <span>File Access</span>
+      </div>
+      <div class="legend-item">
+        <Globe :size="14" class="network" />
+        <span>Network</span>
+      </div>
+    </div>
+
     <!-- Content -->
     <div class="rules-content">
       <!-- Loading State -->
@@ -197,147 +215,60 @@ onUnmounted(() => {
 
       <!-- Empty State -->
       <div v-else-if="rules.length === 0" class="empty-state">
-        <div class="empty-icon">📝</div>
+        <FileCode :size="48" class="empty-icon" />
         <div class="empty-title">No Rules Loaded</div>
         <div class="empty-description">
-          No detection rules have been loaded. Add rules to your rules.yaml file and restart the application.
+          Add rules to your rules.yaml file and restart the application.
         </div>
       </div>
 
       <!-- No Matches -->
       <div v-else-if="filteredRules.length === 0" class="empty-state">
-        <div class="empty-icon">🔍</div>
+        <Search :size="48" class="empty-icon" />
         <div class="empty-title">No Matching Rules</div>
         <div class="empty-description">
           Try adjusting your search or filters to find rules.
         </div>
       </div>
 
-      <!-- Rule Groups -->
+      <!-- Rule Sections -->
       <template v-else>
-        <!-- Alert Rules Section -->
-        <div v-if="hasAlertRules" class="rules-section">
-          <div class="section-header alert">
-            <Shield :size="18" />
-            <h2>Alert Rules</h2>
-            <span class="section-badge">{{ stats.alert }}</span>
+        <!-- Block Rules -->
+        <div v-if="groupedRules.block.length > 0" class="rules-section">
+          <div class="section-header block">
+            <ShieldOff :size="18" />
+            <h2>Block Rules</h2>
+            <span class="section-desc">Active defense - operations will be denied</span>
+            <span class="section-count">{{ groupedRules.block.length }}</span>
           </div>
-
-          <!-- Exec Alert Rules -->
-          <div v-if="groupedRules.alert.exec.length > 0" class="rule-group">
-            <div class="group-header">
-              <div class="group-icon exec">
-                <Terminal :size="16" />
-              </div>
-              <h3 class="group-title">Process Execution</h3>
-              <span class="group-count">{{ groupedRules.alert.exec.length }}</span>
-            </div>
-            <div class="group-content">
-              <RuleCard
-                v-for="rule in groupedRules.alert.exec"
-                :key="rule.name"
-                :rule="rule"
-              />
-            </div>
-          </div>
-
-          <!-- File Alert Rules -->
-          <div v-if="groupedRules.alert.file.length > 0" class="rule-group">
-            <div class="group-header">
-              <div class="group-icon file">
-                <FileText :size="16" />
-              </div>
-              <h3 class="group-title">File Access</h3>
-              <span class="group-count">{{ groupedRules.alert.file.length }}</span>
-            </div>
-            <div class="group-content">
-              <RuleCard
-                v-for="rule in groupedRules.alert.file"
-                :key="rule.name"
-                :rule="rule"
-              />
-            </div>
-          </div>
-
-          <!-- Network Alert Rules -->
-          <div v-if="groupedRules.alert.connect.length > 0" class="rule-group">
-            <div class="group-header">
-              <div class="group-icon connect">
-                <Globe :size="16" />
-              </div>
-              <h3 class="group-title">Network Connection</h3>
-              <span class="group-count">{{ groupedRules.alert.connect.length }}</span>
-            </div>
-            <div class="group-content">
-              <RuleCard
-                v-for="rule in groupedRules.alert.connect"
-                :key="rule.name"
-                :rule="rule"
-              />
-            </div>
+          <div class="rules-list">
+            <RuleCard v-for="rule in groupedRules.block" :key="rule.name" :rule="rule" />
           </div>
         </div>
 
-        <!-- Allow Rules Section -->
-        <div v-if="hasAllowRules" class="rules-section">
+        <!-- Alert Rules -->
+        <div v-if="groupedRules.alert.length > 0" class="rules-section">
+          <div class="section-header alert">
+            <AlertTriangle :size="18" />
+            <h2>Alert Rules</h2>
+            <span class="section-desc">Passive monitoring - events will be logged</span>
+            <span class="section-count">{{ groupedRules.alert.length }}</span>
+          </div>
+          <div class="rules-list">
+            <RuleCard v-for="rule in groupedRules.alert" :key="rule.name" :rule="rule" />
+          </div>
+        </div>
+
+        <!-- Allow Rules -->
+        <div v-if="groupedRules.allow.length > 0" class="rules-section">
           <div class="section-header allow">
             <ShieldCheck :size="18" />
-            <h2>Allow Rules (Whitelist)</h2>
-            <span class="section-badge">{{ stats.allow }}</span>
+            <h2>Allow Rules</h2>
+            <span class="section-desc">Whitelist - bypass monitoring</span>
+            <span class="section-count">{{ groupedRules.allow.length }}</span>
           </div>
-
-          <!-- Exec Allow Rules -->
-          <div v-if="groupedRules.allow.exec.length > 0" class="rule-group">
-            <div class="group-header">
-              <div class="group-icon exec">
-                <Terminal :size="16" />
-              </div>
-              <h3 class="group-title">Process Execution</h3>
-              <span class="group-count">{{ groupedRules.allow.exec.length }}</span>
-            </div>
-            <div class="group-content">
-              <RuleCard
-                v-for="rule in groupedRules.allow.exec"
-                :key="rule.name"
-                :rule="rule"
-              />
-            </div>
-          </div>
-
-          <!-- File Allow Rules -->
-          <div v-if="groupedRules.allow.file.length > 0" class="rule-group">
-            <div class="group-header">
-              <div class="group-icon file">
-                <FileText :size="16" />
-              </div>
-              <h3 class="group-title">File Access</h3>
-              <span class="group-count">{{ groupedRules.allow.file.length }}</span>
-            </div>
-            <div class="group-content">
-              <RuleCard
-                v-for="rule in groupedRules.allow.file"
-                :key="rule.name"
-                :rule="rule"
-              />
-            </div>
-          </div>
-
-          <!-- Network Allow Rules -->
-          <div v-if="groupedRules.allow.connect.length > 0" class="rule-group">
-            <div class="group-header">
-              <div class="group-icon connect">
-                <Globe :size="16" />
-              </div>
-              <h3 class="group-title">Network Connection</h3>
-              <span class="group-count">{{ groupedRules.allow.connect.length }}</span>
-            </div>
-            <div class="group-content">
-              <RuleCard
-                v-for="rule in groupedRules.allow.connect"
-                :key="rule.name"
-                :rule="rule"
-              />
-            </div>
+          <div class="rules-list">
+            <RuleCard v-for="rule in groupedRules.allow" :key="rule.name" :rule="rule" />
           </div>
         </div>
       </template>
@@ -350,73 +281,109 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  max-width: 1200px;
 }
 
 /* Header */
 .page-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 20px;
 }
 
-.header-content {
+.header-title {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 14px;
+}
+
+.title-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, var(--accent-primary), #3b82f6);
+  border-radius: var(--radius-md);
+  color: #fff;
 }
 
 .page-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
 }
 
-.title-icon {
-  color: var(--accent-primary);
-}
-
 .page-subtitle {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-muted);
 }
 
-.header-stats {
+/* Action Stats */
+.action-stats {
   display: flex;
-  gap: 16px;
+  gap: 12px;
 }
 
-.stat-item {
+.action-stat {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--bg-elevated);
-  border-radius: var(--radius-md);
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
 }
 
-.stat-item.alert .stat-icon { color: var(--status-critical); }
-.stat-item.allow .stat-icon { color: var(--status-safe); }
-.stat-icon.exec { color: var(--status-info); }
-.stat-icon.file { color: var(--status-safe); }
-.stat-icon.connect { color: var(--status-warning); }
+.action-stat:hover {
+  border-color: var(--border-default);
+}
 
-.stat-value {
-  font-size: 16px;
+.action-stat.active {
+  background: var(--bg-overlay);
+}
+
+.action-stat.block {
+  color: var(--status-blocked);
+}
+
+.action-stat.block.active {
+  border-color: var(--status-blocked);
+  background: var(--status-blocked-dim);
+}
+
+.action-stat.alert {
+  color: var(--status-warning);
+}
+
+.action-stat.alert.active {
+  border-color: var(--status-warning);
+  background: var(--status-warning-dim);
+}
+
+.action-stat.allow {
+  color: var(--status-safe);
+}
+
+.action-stat.allow.active {
+  border-color: var(--status-safe);
+  background: var(--status-safe-dim);
+}
+
+.action-stat .stat-value {
+  font-size: 18px;
   font-weight: 700;
   font-family: var(--font-mono);
-  color: var(--text-primary);
 }
 
-.stat-label {
+.action-stat .stat-label {
   font-size: 12px;
-  color: var(--text-muted);
+  opacity: 0.8;
 }
 
 /* Filters */
@@ -444,7 +411,7 @@ onUnmounted(() => {
 }
 
 .search-box:focus-within {
-  border-color: var(--border-focus);
+  border-color: var(--accent-primary);
 }
 
 .search-icon {
@@ -486,7 +453,7 @@ onUnmounted(() => {
 }
 
 .filter-select:focus {
-  border-color: var(--border-focus);
+  border-color: var(--accent-primary);
   outline: none;
 }
 
@@ -522,6 +489,36 @@ onUnmounted(() => {
   to { transform: rotate(360deg); }
 }
 
+/* Type Legend */
+.type-legend {
+  display: flex;
+  gap: 20px;
+  padding: 10px 16px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.legend-item .exec {
+  color: var(--chart-exec);
+}
+
+.legend-item .file {
+  color: var(--chart-file);
+}
+
+.legend-item .network {
+  color: var(--chart-network);
+}
+
 /* Content */
 .rules-content {
   display: flex;
@@ -538,6 +535,9 @@ onUnmounted(() => {
   justify-content: center;
   padding: 80px 40px;
   text-align: center;
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
 }
 
 .loading-spinner {
@@ -555,9 +555,9 @@ onUnmounted(() => {
 }
 
 .empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
+  color: var(--text-muted);
   opacity: 0.5;
+  margin-bottom: 16px;
 }
 
 .empty-title {
@@ -573,111 +573,103 @@ onUnmounted(() => {
   max-width: 400px;
 }
 
-/* Rule Groups */
-.rule-group {
-  background: var(--bg-surface);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-subtle);
-  overflow: hidden;
-}
-
-.group-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.group-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-}
-
-.group-icon.exec {
-  background: var(--status-info-dim);
-  color: var(--status-info);
-}
-
-.group-icon.file {
-  background: var(--status-safe-dim);
-  color: var(--status-safe);
-}
-
-.group-icon.connect {
-  background: var(--status-warning-dim);
-  color: var(--status-warning);
-}
-
-.group-title {
-  flex: 1;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.group-count {
-  padding: 4px 12px;
-  background: var(--bg-overlay);
-  border-radius: var(--radius-full);
-  font-size: 12px;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  color: var(--text-secondary);
-}
-
-.group-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px;
-}
-
-/* Rules Sections */
+/* Rule Sections */
 .rules-section {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .section-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px;
+  padding: 14px 18px;
   border-radius: var(--radius-md);
-  margin-bottom: 8px;
+}
+
+.section-header.block {
+  background: linear-gradient(135deg, var(--status-blocked-dim), transparent 60%);
+  border-left: 3px solid var(--status-blocked);
+  color: var(--status-blocked);
 }
 
 .section-header.alert {
-  background: var(--status-critical-dim);
-  color: var(--status-critical);
+  background: linear-gradient(135deg, var(--status-warning-dim), transparent 60%);
+  border-left: 3px solid var(--status-warning);
+  color: var(--status-warning);
 }
 
 .section-header.allow {
-  background: var(--status-safe-dim);
+  background: linear-gradient(135deg, var(--status-safe-dim), transparent 60%);
+  border-left: 3px solid var(--status-safe);
   color: var(--status-safe);
 }
 
 .section-header h2 {
-  flex: 1;
   font-size: 14px;
   font-weight: 600;
   margin: 0;
 }
 
-.section-badge {
-  padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.15);
+.section-desc {
+  flex: 1;
+  font-size: 12px;
+  opacity: 0.7;
+  color: var(--text-secondary);
+}
+
+.section-count {
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-full);
   font-size: 12px;
   font-weight: 600;
   font-family: var(--font-mono);
+}
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .action-stats {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .action-stat {
+    flex: 1;
+    justify-content: center;
+    padding: 12px;
+  }
+
+  .action-stat .stat-label {
+    display: none;
+  }
+
+  .filters-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-group {
+    flex-wrap: wrap;
+  }
+
+  .type-legend {
+    justify-content: center;
+  }
+
+  .section-desc {
+    display: none;
+  }
 }
 </style>

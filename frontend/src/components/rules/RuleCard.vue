@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { ChevronDown, ChevronRight, Terminal, Globe, FileText, Copy, Check } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Terminal, Globe, FileText, Copy, Check, ShieldOff, AlertTriangle, ShieldCheck } from 'lucide-vue-next'
 import type { Rule } from '../../lib/api'
 
 const props = defineProps<{
@@ -19,7 +19,14 @@ const typeIcon = computed(() => {
   }
 })
 
-const severityClass = computed(() => `severity-${props.rule.severity}`)
+const actionIcon = computed(() => {
+  switch (props.rule.action) {
+    case 'block': return ShieldOff
+    case 'alert': return AlertTriangle
+    case 'allow': return ShieldCheck
+    default: return AlertTriangle
+  }
+})
 
 const matchEntries = computed(() => {
   if (!props.rule.match) return []
@@ -34,7 +41,7 @@ const copyYaml = async () => {
 </script>
 
 <template>
-  <div class="rule-card" :class="severityClass">
+  <div class="rule-card" :class="[`action-${rule.action}`, `severity-${rule.severity}`]">
     <!-- Header (always visible) -->
     <div class="rule-header" @click="isExpanded = !isExpanded">
       <button class="expand-btn">
@@ -56,6 +63,7 @@ const copyYaml = async () => {
           {{ rule.severity.toUpperCase() }}
         </span>
         <span class="action-badge" :class="rule.action">
+          <component :is="actionIcon" :size="10" />
           {{ rule.action.toUpperCase() }}
         </span>
       </div>
@@ -108,6 +116,19 @@ const copyYaml = async () => {
   border-color: var(--border-default);
 }
 
+/* Action-based left border accent */
+.rule-card.action-block {
+  border-left: 3px solid var(--status-blocked);
+}
+
+.rule-card.action-alert {
+  border-left: 3px solid var(--status-warning);
+}
+
+.rule-card.action-allow {
+  border-left: 3px solid var(--status-safe);
+}
+
 /* Header */
 .rule-header {
   display: flex;
@@ -143,18 +164,18 @@ const copyYaml = async () => {
 }
 
 .rule-type.type-exec {
-  background: var(--status-info-dim);
-  color: var(--status-info);
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--chart-exec);
 }
 
 .rule-type.type-connect {
-  background: var(--status-warning-dim);
-  color: var(--status-warning);
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--chart-network);
 }
 
 .rule-type.type-file {
-  background: var(--status-safe-dim);
-  color: var(--status-safe);
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--chart-file);
 }
 
 .rule-info {
@@ -191,10 +212,20 @@ const copyYaml = async () => {
 
 .severity-badge,
 .action-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 4px 10px;
   border-radius: var(--radius-sm);
   font-size: 10px;
   font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* Severity badges - all styled consistently */
+.severity-badge.critical {
+  background: var(--status-blocked-dim);
+  color: var(--status-blocked);
 }
 
 .severity-badge.high {
@@ -212,9 +243,15 @@ const copyYaml = async () => {
   color: var(--status-info);
 }
 
+/* Action badges - all styled consistently */
+.action-badge.block {
+  background: var(--status-blocked);
+  color: #fff;
+}
+
 .action-badge.alert {
-  background: var(--status-critical-dim);
-  color: var(--status-critical);
+  background: var(--status-warning-dim);
+  color: var(--status-warning);
 }
 
 .action-badge.allow {
@@ -344,4 +381,3 @@ const copyYaml = async () => {
   white-space: pre;
 }
 </style>
-
