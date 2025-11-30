@@ -1,6 +1,8 @@
 package rules
 
 import (
+	"net"
+
 	"eulerguard/pkg/events"
 )
 
@@ -56,17 +58,20 @@ func (r *Rule) DeriveType() RuleType {
 }
 
 type MatchCondition struct {
-	ProcessName     string    `yaml:"process_name,omitempty"`
-	ProcessNameType MatchType `yaml:"process_name_type,omitempty"`
-	ParentName      string    `yaml:"parent_name,omitempty"`
-	ParentNameType  MatchType `yaml:"parent_name_type,omitempty"`
-	PID             uint32    `yaml:"pid,omitempty"`
-	PPID            uint32    `yaml:"ppid,omitempty"`
-	CgroupID        string    `yaml:"cgroup_id,omitempty"`
-	Filename        string    `yaml:"filename,omitempty"`
-	FilePath        string    `yaml:"file_path,omitempty"`
-	DestPort        uint16    `yaml:"dest_port,omitempty"`
-	DestIP          string    `yaml:"dest_ip,omitempty"`
+	ProcessName        string     `yaml:"process_name,omitempty"`
+	ProcessNameType    MatchType  `yaml:"process_name_type,omitempty"`
+	ParentName         string     `yaml:"parent_name,omitempty"`
+	ParentNameType     MatchType  `yaml:"parent_name_type,omitempty"`
+	PID                uint32     `yaml:"pid,omitempty"`
+	PPID               uint32     `yaml:"ppid,omitempty"`
+	CgroupID           string     `yaml:"cgroup_id,omitempty"`
+	Filename           string     `yaml:"filename,omitempty"`
+	FilePath           string     `yaml:"file_path,omitempty"`
+	DestPort           uint16     `yaml:"dest_port,omitempty"`
+	DestIP             string     `yaml:"dest_ip,omitempty"`
+	normalizedFilename string     `yaml:"-"`
+	destIPNet          *net.IPNet `yaml:"-"`
+	destIPPrepared     bool       `yaml:"-"`
 }
 
 type RuleSet struct {
@@ -77,4 +82,40 @@ type Alert struct {
 	Rule    Rule
 	Event   events.ProcessedEvent
 	Message string
+}
+
+func (m *MatchCondition) prepare() {
+	if m == nil {
+		return
+	}
+
+	if m.Filename != "" {
+		m.normalizedFilename = normalizeFilename(m.Filename)
+	} else {
+		m.normalizedFilename = ""
+	}
+
+	if !m.destIPPrepared {
+		m.destIPPrepared = true
+		if m.DestIP == "" {
+			m.destIPNet = nil
+			return
+		}
+		if _, cidr, err := net.ParseCIDR(m.DestIP); err == nil {
+			m.destIPNet = cidr
+		} else {
+			m.destIPNet = nil
+		}
+	}
+}
+
+func (m *MatchCondition) matchIP(eventIP string) bool {
+	if m == nil || m.DestIP == "" {
+		return true
+	}
+	if m.destIPNet != nil {
+		ip := net.ParseIP(eventIP)
+		return ip != nil && m.destIPNet.Contains(ip)
+	}
+	return eventIP == m.DestIP
 }

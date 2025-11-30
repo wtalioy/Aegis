@@ -22,7 +22,7 @@ func newConnectMatcher(rules []Rule) *connectMatcher {
 func (m *connectMatcher) Match(event *events.ConnectEvent) (matched bool, rule *Rule, allowed bool) {
 	return filterRulesByAction(m.rules, m.matchRule, event)
 }
-	
+
 func (m *connectMatcher) matchRule(rule *Rule, event *events.ConnectEvent) bool {
 	match := rule.Match
 	if match.DestPort == 0 && match.DestIP == "" {
@@ -32,7 +32,7 @@ func (m *connectMatcher) matchRule(rule *Rule, event *events.ConnectEvent) bool 
 		return false
 	}
 	if match.DestIP != "" {
-		if eventIP := utils.ExtractIP(event); eventIP == "" || !matchIP(eventIP, match.DestIP) {
+		if eventIP := utils.ExtractIP(event); eventIP == "" || !match.matchIP(eventIP) {
 			return false
 		}
 	}

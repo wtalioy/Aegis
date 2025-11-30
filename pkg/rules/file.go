@@ -3,9 +3,10 @@ package rules
 import "strings"
 
 type fileEvent struct {
-	filename string
-	pid      uint32
-	cgroupID uint64
+	filename       string
+	normalizedName string
+	pid            uint32
+	cgroupID       uint64
 }
 
 type fileMatcher struct {
@@ -28,7 +29,7 @@ func newFileMatcher(rules []Rule) *fileMatcher {
 	for i := range rules {
 		rule := &rules[i]
 		if rule.Match.Filename != "" {
-			normalizedName := normalizeFilename(rule.Match.Filename)
+			normalizedName := rule.Match.normalizedFilename
 			matcher.exactFilenameRules[normalizedName] = append(
 				matcher.exactFilenameRules[normalizedName], rule)
 		}
@@ -40,13 +41,18 @@ func newFileMatcher(rules []Rule) *fileMatcher {
 }
 
 func (m *fileMatcher) Match(filename string, pid uint32, cgroupID uint64) (matched bool, rule *Rule, allowed bool) {
-	event := fileEvent{filename: filename, pid: pid, cgroupID: cgroupID}
-	return filterRulesByAction(m.getCandidateRules(filename), m.matchRule, event)
+	normalized := normalizeFilename(filename)
+	event := fileEvent{
+		filename:       filename,
+		normalizedName: normalized,
+		pid:            pid,
+		cgroupID:       cgroupID,
+	}
+	return filterRulesByAction(m.getCandidateRules(normalized), m.matchRule, event)
 }
 
-func (m *fileMatcher) getCandidateRules(filename string) []*Rule {
+func (m *fileMatcher) getCandidateRules(normalizedName string) []*Rule {
 	var candidates []*Rule
-	normalizedName := normalizeFilename(filename)
 	if rules, ok := m.exactFilenameRules[normalizedName]; ok {
 		candidates = append(candidates, rules...)
 	}
@@ -60,9 +66,7 @@ func (m *fileMatcher) matchRule(rule *Rule, event fileEvent) bool {
 		return false
 	}
 	if match.Filename != "" {
-		normalizedRule := normalizeFilename(match.Filename)
-		normalizedEvent := normalizeFilename(event.filename)
-		if normalizedEvent != normalizedRule {
+		if event.normalizedName != match.normalizedFilename {
 			return false
 		}
 	}

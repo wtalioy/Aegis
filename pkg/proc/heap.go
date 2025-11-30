@@ -93,16 +93,17 @@ func (ti *timeIndex) PopOldest() (uint32, bool) {
 	return item.pid, true
 }
 
-func (ti *timeIndex) GetOldest() (uint32, time.Time, bool) {
+func (ti *timeIndex) PopBefore(cutoff time.Time) (uint32, bool) {
 	ti.mu.Lock()
 	defer ti.mu.Unlock()
 
-	if ti.heap.Len() == 0 {
-		return 0, time.Time{}, false
+	if ti.heap.Len() == 0 || !ti.heap[0].timestamp.Before(cutoff) {
+		return 0, false
 	}
 
-	item := ti.heap[0]
-	return item.pid, item.timestamp, true
+	item := heap.Pop(&ti.heap).(*heapItem)
+	delete(ti.pidToItem, item.pid)
+	return item.pid, true
 }
 
 func (ti *timeIndex) Len() int {

@@ -205,18 +205,14 @@ func (pt *ProcessTree) cleanupLoop() {
 }
 
 func (pt *ProcessTree) cleanup() {
-	now := time.Now()
+	cutoff := time.Now().Add(-pt.maxAge)
 	count := 0
 
 	for {
-		pid, timestamp, ok := pt.timeIndex.GetOldest()
+		pid, ok := pt.timeIndex.PopBefore(cutoff)
 		if !ok {
 			break
 		}
-		if now.Sub(timestamp) <= pt.maxAge {
-			break
-		}
-		pt.timeIndex.PopOldest()
 		if _, loaded := pt.processes.LoadAndDelete(pid); loaded {
 			pt.size.Add(-1)
 			count++

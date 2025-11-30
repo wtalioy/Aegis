@@ -2,7 +2,6 @@ package utils
 
 import (
 	"bytes"
-	"encoding/binary"
 	"eulerguard/pkg/events"
 	"net"
 )
@@ -19,13 +18,15 @@ func ExtractCString(data []byte) string {
 func ExtractIP(event *events.ConnectEvent) string {
 	switch event.Family {
 	case 2: // AF_INET (IPv4)
-		ipBytes := make([]byte, 4)
-		binary.LittleEndian.PutUint32(ipBytes, event.AddrV4)
-		ip := net.IPv4(ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3])
-		return ip.String()
+		addr := event.AddrV4
+		return net.IPv4(
+			byte(addr),
+			byte(addr>>8),
+			byte(addr>>16),
+			byte(addr>>24),
+		).String()
 	case 10: // AF_INET6 (IPv6)
-		ip := net.IP(event.AddrV6[:])
-		return ip.String()
+		return net.IP(event.AddrV6[:]).String()
 	}
 	return ""
 }

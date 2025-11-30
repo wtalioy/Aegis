@@ -10,6 +10,9 @@ type Engine struct {
 }
 
 func NewEngine(rules []Rule) *Engine {
+	for i := range rules {
+		rules[i].Match.prepare()
+	}
 	return &Engine{
 		rules:          rules,
 		execMatcher:    newExecMatcher(rules),

@@ -1,7 +1,6 @@
 package rules
 
 import (
-	"net"
 	"strconv"
 	"strings"
 )
@@ -20,16 +19,6 @@ func matchString(value, pattern string, matchType MatchType) bool {
 	}
 }
 
-// match an IP address against a pattern (supports CIDR notation).
-func matchIP(eventIP, ruleIP string) bool {
-	_, ipNet, err := net.ParseCIDR(ruleIP)
-	if err == nil {
-		ip := net.ParseIP(eventIP)
-		return ip != nil && ipNet.Contains(ip)
-	}
-	return eventIP == ruleIP
-}
-
 func matchCgroupID(pattern string, cgroupID uint64) bool {
 	return pattern == "" || strconv.FormatUint(cgroupID, 10) == pattern
 }
@@ -38,23 +27,34 @@ func matchPID(pattern uint32, pid uint32) bool {
 	return pattern == 0 || pid == pattern
 }
 
-
 // Returns: matched (any rule matched), rule (the matching rule), allowed (should the action be allowed)
 func filterRulesByAction[T any](rules []*Rule, matchFn func(*Rule, T) bool, event T) (matched bool, rule *Rule, allowed bool) {
+	var blockRule *Rule
+	var alertRule *Rule
+
 	for _, r := range rules {
-		if r.Action == ActionAllow && matchFn(r, event) {
+		if !matchFn(r, event) {
+			continue
+		}
+		switch r.Action {
+		case ActionAllow:
 			return true, r, true
+		case ActionBlock:
+			if blockRule == nil {
+				blockRule = r
+			}
+		case ActionAlert:
+			if alertRule == nil {
+				alertRule = r
+			}
 		}
 	}
-	for _, r := range rules {
-		if r.Action == ActionBlock && matchFn(r, event) {
-			return true, r, false
-		}
+
+	if blockRule != nil {
+		return true, blockRule, false
 	}
-	for _, r := range rules {
-		if r.Action == ActionAlert && matchFn(r, event) {
-			return true, r, false
-		}
+	if alertRule != nil {
+		return true, alertRule, false
 	}
 	return false, nil, false
 }
