@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Terminal, Globe, FileText, Database, Zap } from 'lucide-vue-next'
+import { Terminal, Globe, FileText, Database, Zap, ShieldOff, ShieldCheck } from 'lucide-vue-next'
 import { probes, type ProbeInfo } from '../../data/probes'
 import { subscribeToAllEvents, type ProbeStats, type StreamEvent } from '../../lib/api'
 
@@ -12,20 +12,20 @@ defineEmits<{
   selectProbe: [probe: ProbeInfo]
 }>()
 
-interface RecentProcess {
+interface RecentEvent {
   id: string
   name: string
   pid: number
   type: 'exec' | 'file' | 'connect'
   timestamp: number
   syscall: string
-  detail: string
+  blocked: boolean
 }
 
-const recentProcesses = ref<RecentProcess[]>([])
-const maxRecentProcesses = 5
+const recentEvents = ref<RecentEvent[]>([])
+const maxRecentEvents = 5
 
-const activeFlows = ref<{ id: string; type: string; startTime: number }[]>([])
+const activeFlows = ref<{ id: string; type: string; blocked: boolean; startTime: number }[]>([])
 const pulsingProbes = ref<Set<string>>(new Set())
 
 let unsubscribe: (() => void) | null = null
@@ -59,8 +59,9 @@ const formatNumber = (n: number): string => {
 
 const handleEvent = (event: StreamEvent) => {
   const id = `${event.type}-${Date.now()}-${Math.random()}`
+  const blocked = event.blocked === true
   
-  let process: RecentProcess
+  let process: RecentEvent
   let probeType: string
   
   if (event.type === 'exec') {
@@ -71,7 +72,7 @@ const handleEvent = (event: StreamEvent) => {
       type: 'exec',
       timestamp: event.timestamp,
       syscall: 'execve()',
-      detail: `from ${event.parentComm}`
+      blocked
     }
     probeType = 'exec'
   } else if (event.type === 'file') {
@@ -82,7 +83,7 @@ const handleEvent = (event: StreamEvent) => {
       type: 'file',
       timestamp: event.timestamp,
       syscall: 'open()',
-      detail: event.filename.length > 30 ? '...' + event.filename.slice(-27) : event.filename
+      blocked
     }
     probeType = 'openat'
   } else {
@@ -93,14 +94,14 @@ const handleEvent = (event: StreamEvent) => {
       type: 'connect',
       timestamp: event.timestamp,
       syscall: 'connect()',
-      detail: `port ${event.port}`
+      blocked
     }
     probeType = 'connect'
   }
   
-  recentProcesses.value = [process, ...recentProcesses.value].slice(0, maxRecentProcesses)
+  recentEvents.value = [process, ...recentEvents.value].slice(0, maxRecentEvents)
   
-  activeFlows.value.push({ id, type: event.type, startTime: Date.now() })
+  activeFlows.value.push({ id, type: event.type, blocked, startTime: Date.now() })
   
   pulsingProbes.value.add(probeType)
   setTimeout(() => {
@@ -157,8 +158,12 @@ onUnmounted(() => {
         <span class="live-dot"></span>
         <span class="live-text">LIVE</span>
       </div>
+      <div class="lsm-status">
+        <ShieldOff :size="14" />
+        <span>LSM Active Defense</span>
+      </div>
       <div class="activity-meter">
-        <span class="meter-label">Activity</span>
+        <span class="meter-label">Throughput</span>
         <div class="meter-bar">
           <div 
             class="meter-fill" 
@@ -173,62 +178,65 @@ onUnmounted(() => {
     <div class="space-section user-space">
       <div class="space-label">USER SPACE</div>
       
-      <!-- Recent Processes - Live Feed -->
-      <div class="processes-live">
-        <TransitionGroup name="process-slide">
+      <!-- Recent Events - Live Feed -->
+      <div class="events-live">
+        <TransitionGroup name="event-slide">
           <div 
-            v-for="proc in recentProcesses"
-            :key="proc.id"
-            class="process-box"
-            :class="[getEventColorClass(proc.type), { entering: true }]"
+            v-for="evt in recentEvents"
+            :key="evt.id"
+            class="event-box"
+            :class="[getEventColorClass(evt.type), { blocked: evt.blocked }]"
           >
-            <component :is="getEventIcon(proc.type)" :size="16" class="proc-icon" />
-            <div class="proc-info">
-              <span class="proc-name">{{ proc.name }}</span>
-              <code class="proc-pid">PID: {{ proc.pid }}</code>
+            <div class="event-status">
+              <ShieldOff v-if="evt.blocked" :size="12" class="status-icon blocked" />
+              <ShieldCheck v-else :size="12" class="status-icon allowed" />
             </div>
-            <span class="proc-syscall">{{ proc.syscall }}</span>
+            <component :is="getEventIcon(evt.type)" :size="16" class="event-icon" />
+            <div class="event-info">
+              <span class="event-name">{{ evt.name }}</span>
+              <code class="event-pid">PID: {{ evt.pid }}</code>
+            </div>
+            <span class="event-syscall">{{ evt.syscall }}</span>
           </div>
         </TransitionGroup>
         
-        <!-- Empty state -->
-        <div v-if="recentProcesses.length === 0" class="empty-processes">
+        <div v-if="recentEvents.length === 0" class="empty-events">
           <Zap :size="24" class="empty-icon" />
           <span>Waiting for events...</span>
         </div>
       </div>
       
-      <!-- Animated Syscall Flows -->
+      <!-- Syscall Flows -->
       <div class="syscall-flows">
         <div class="flow-lane" :class="{ active: isFlowActive('exec') }">
           <div class="flow-label">execve()</div>
           <div class="flow-track">
-            <div class="flow-particle" v-for="flow in activeFlows.filter(f => f.type === 'exec')" :key="flow.id"></div>
+            <div class="flow-particle" v-for="flow in activeFlows.filter(f => f.type === 'exec')" :key="flow.id" :class="{ blocked: flow.blocked }"></div>
           </div>
         </div>
         <div class="flow-lane" :class="{ active: isFlowActive('file') }">
           <div class="flow-label">open()</div>
           <div class="flow-track">
-            <div class="flow-particle" v-for="flow in activeFlows.filter(f => f.type === 'file')" :key="flow.id"></div>
+            <div class="flow-particle" v-for="flow in activeFlows.filter(f => f.type === 'file')" :key="flow.id" :class="{ blocked: flow.blocked }"></div>
           </div>
         </div>
         <div class="flow-lane" :class="{ active: isFlowActive('connect') }">
           <div class="flow-label">connect()</div>
           <div class="flow-track">
-            <div class="flow-particle" v-for="flow in activeFlows.filter(f => f.type === 'connect')" :key="flow.id"></div>
+            <div class="flow-particle" v-for="flow in activeFlows.filter(f => f.type === 'connect')" :key="flow.id" :class="{ blocked: flow.blocked }"></div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Kernel Boundary - Animated -->
-    <div class="kernel-boundary">
+    <!-- LSM Boundary -->
+    <div class="lsm-boundary">
       <div class="boundary-line">
         <div class="boundary-pulse" :class="{ active: activeFlows.length > 0 }"></div>
       </div>
       <span class="boundary-label">
-        <Zap :size="12" />
-        System Call Interface
+        <ShieldOff :size="12" />
+        LSM Decision Point
       </span>
       <div class="boundary-line">
         <div class="boundary-pulse" :class="{ active: activeFlows.length > 0 }"></div>
@@ -239,12 +247,12 @@ onUnmounted(() => {
     <div class="space-section kernel-space" :class="{ active: activeFlows.length > 0 }">
       <div class="space-label">KERNEL SPACE</div>
       
-      <!-- eBPF Probes -->
-      <div class="probes-row">
+      <!-- LSM Hooks -->
+      <div class="hooks-row">
         <div 
           v-for="probe in probes"
           :key="probe.id"
-          class="probe-node"
+          class="hook-node"
           :class="[
             probe.category, 
             { 
@@ -254,12 +262,16 @@ onUnmounted(() => {
           ]"
           @click="$emit('selectProbe', probe)"
         >
-          <div class="probe-glow"></div>
-          <div class="probe-indicator"></div>
-          <component :is="getProbeIcon(probe.category)" :size="20" class="probe-icon" />
-          <span class="probe-name">{{ probe.name.replace(' Monitor', '') }}</span>
-          <code class="probe-tracepoint">{{ probe.tracepoint.split('/').pop() }}</code>
-          <div class="probe-stats" v-if="getStatsForProbe(probe.id)">
+          <div class="hook-glow"></div>
+          <div class="hook-indicator"></div>
+          <component :is="getProbeIcon(probe.category)" :size="20" class="hook-icon" />
+          <span class="hook-name">{{ probe.name }}</span>
+          <code class="hook-signature">{{ probe.hook.split('/').pop() }}</code>
+          <div class="hook-capability">
+            <ShieldOff :size="10" />
+            <span>BLOCK</span>
+          </div>
+          <div class="hook-stats" v-if="getStatsForProbe(probe.id)">
             <div class="stat-rate-container">
               <span class="stat-rate">{{ getStatsForProbe(probe.id)?.eventsRate || 0 }}</span>
               <span class="stat-unit">/sec</span>
@@ -270,7 +282,6 @@ onUnmounted(() => {
                 :style="{ width: Math.min((getStatsForProbe(probe.id)?.eventsRate || 0) * 10, 100) + '%' }"
               ></div>
             </div>
-            <span class="stat-total">{{ formatNumber(getStatsForProbe(probe.id)?.totalCount || 0) }} captured</span>
           </div>
         </div>
       </div>
@@ -289,7 +300,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Ring Buffer - Animated -->
+      <!-- Ring Buffer -->
       <div class="ring-buffer" :class="{ receiving: activeFlows.length > 0 }">
         <div class="buffer-icon-container">
           <Database :size="24" class="buffer-icon" />
@@ -326,30 +337,28 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Interactive Legend -->
+    <!-- Legend -->
     <div class="diagram-legend">
-      <div class="legend-stats">
-        <div class="legend-stat">
-          <span class="stat-number">{{ formatNumber(totalEvents) }}</span>
-          <span class="stat-label">Total Events</span>
-        </div>
-        <div class="legend-stat">
-          <span class="stat-number">{{ totalEventsPerSec }}</span>
-          <span class="stat-label">Events/sec</span>
-        </div>
-      </div>
       <div class="legend-items">
         <div class="legend-item process">
           <Terminal :size="14" />
-          <span>Process</span>
+          <span>Process Exec</span>
         </div>
         <div class="legend-item file">
           <FileText :size="14" />
-          <span>File</span>
+          <span>File Access</span>
         </div>
         <div class="legend-item network">
           <Globe :size="14" />
           <span>Network</span>
+        </div>
+        <div class="legend-item blocked">
+          <ShieldOff :size="14" />
+          <span>Blocked</span>
+        </div>
+        <div class="legend-item allowed">
+          <ShieldCheck :size="14" />
+          <span>Allowed</span>
         </div>
       </div>
     </div>
@@ -403,6 +412,19 @@ onUnmounted(() => {
   letter-spacing: 0.1em;
 }
 
+.lsm-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: var(--status-blocked-dim);
+  border: 1px solid var(--status-blocked);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--status-blocked);
+}
+
 .activity-meter {
   display: flex;
   align-items: center;
@@ -451,8 +473,8 @@ onUnmounted(() => {
 }
 
 .kernel-space {
-  background: linear-gradient(135deg, rgba(96, 165, 250, 0.03) 0%, rgba(139, 92, 246, 0.03) 100%);
-  border: 2px solid var(--accent-primary);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.03) 0%, rgba(96, 165, 250, 0.03) 100%);
+  border: 2px solid #8b5cf6;
 }
 
 .kernel-space.active {
@@ -473,12 +495,12 @@ onUnmounted(() => {
 }
 
 .kernel-space .space-label {
-  color: var(--accent-primary);
+  color: #8b5cf6;
   background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated));
 }
 
-/* Live Processes Feed */
-.processes-live {
+/* Live Events Feed */
+.events-live {
   display: flex;
   gap: 12px;
   min-height: 60px;
@@ -487,7 +509,7 @@ onUnmounted(() => {
   padding: 4px;
 }
 
-.process-box {
+.event-box {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -497,33 +519,55 @@ onUnmounted(() => {
   border: 1px solid var(--border-subtle);
   transition: all 0.3s ease;
   flex-shrink: 0;
-  min-width: 160px;
+  min-width: 180px;
+  position: relative;
 }
 
-.process-box.process {
-  border-color: var(--status-info);
-  background: linear-gradient(135deg, rgba(96, 165, 250, 0.1), transparent);
+.event-box.blocked {
+  border-color: var(--status-blocked);
+  background: linear-gradient(135deg, var(--status-blocked-dim), transparent);
 }
 
-.process-box.file {
-  border-color: var(--status-safe);
-  background: linear-gradient(135deg, rgba(52, 211, 153, 0.1), transparent);
+.event-box.process { border-color: var(--chart-exec); }
+.event-box.file { border-color: var(--chart-file); }
+.event-box.network { border-color: var(--chart-network); }
+
+.event-box.process.blocked,
+.event-box.file.blocked,
+.event-box.network.blocked {
+  border-color: var(--status-blocked);
 }
 
-.process-box.network {
-  border-color: var(--status-warning);
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), transparent);
+.event-status {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg-surface);
 }
 
-.proc-icon {
+.status-icon.blocked {
+  color: var(--status-blocked);
+}
+
+.status-icon.allowed {
+  color: var(--status-safe);
+}
+
+.event-icon {
   flex-shrink: 0;
 }
 
-.process-box.process .proc-icon { color: var(--status-info); }
-.process-box.file .proc-icon { color: var(--status-safe); }
-.process-box.network .proc-icon { color: var(--status-warning); }
+.event-box.process .event-icon { color: var(--chart-exec); }
+.event-box.file .event-icon { color: var(--chart-file); }
+.event-box.network .event-icon { color: var(--chart-network); }
 
-.proc-info {
+.event-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -531,7 +575,7 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-.proc-name {
+.event-name {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
@@ -540,13 +584,13 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 
-.proc-pid {
+.event-pid {
   font-family: var(--font-mono);
   font-size: 9px;
   color: var(--text-muted);
 }
 
-.proc-syscall {
+.event-syscall {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-muted);
@@ -555,16 +599,16 @@ onUnmounted(() => {
   border-radius: var(--radius-sm);
 }
 
-/* Process slide animation */
-.process-slide-enter-active {
+/* Event slide animation */
+.event-slide-enter-active {
   animation: slide-in 0.4s ease-out;
 }
 
-.process-slide-leave-active {
+.event-slide-leave-active {
   animation: slide-out 0.3s ease-in;
 }
 
-.process-slide-move {
+.event-slide-move {
   transition: transform 0.3s ease;
 }
 
@@ -590,7 +634,7 @@ onUnmounted(() => {
   }
 }
 
-.empty-processes {
+.empty-events {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -643,16 +687,20 @@ onUnmounted(() => {
 }
 
 .flow-lane.active .flow-track {
-  background: linear-gradient(to bottom, var(--accent-primary), var(--status-learning));
+  background: linear-gradient(to bottom, var(--accent-primary), #8b5cf6);
 }
 
 .flow-particle {
   position: absolute;
   width: 100%;
   height: 12px;
-  background: linear-gradient(to bottom, transparent, var(--status-learning), transparent);
+  background: linear-gradient(to bottom, transparent, #8b5cf6, transparent);
   border-radius: var(--radius-full);
   animation: flow-down 0.8s ease-out;
+}
+
+.flow-particle.blocked {
+  background: linear-gradient(to bottom, transparent, var(--status-blocked), transparent);
 }
 
 @keyframes flow-down {
@@ -660,8 +708,8 @@ onUnmounted(() => {
   100% { top: 100%; opacity: 0; }
 }
 
-/* Kernel Boundary */
-.kernel-boundary {
+/* LSM Boundary */
+.lsm-boundary {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -671,7 +719,7 @@ onUnmounted(() => {
 .boundary-line {
   flex: 1;
   height: 2px;
-  background: var(--border-subtle);
+  background: var(--status-blocked);
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-full);
@@ -683,7 +731,7 @@ onUnmounted(() => {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+  background: linear-gradient(90deg, transparent, #fff, transparent);
   opacity: 0;
 }
 
@@ -702,23 +750,23 @@ onUnmounted(() => {
   gap: 6px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--accent-primary);
+  color: var(--status-blocked);
   white-space: nowrap;
   padding: 4px 12px;
   background: var(--bg-surface);
   border-radius: var(--radius-full);
-  border: 1px solid var(--accent-primary);
+  border: 1px solid var(--status-blocked);
 }
 
-/* Probes Row */
-.probes-row {
+/* Hooks Row */
+.hooks-row {
   display: flex;
   justify-content: center;
   gap: 20px;
   margin-bottom: 20px;
 }
 
-.probe-node {
+.hook-node {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -730,10 +778,10 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.3s ease;
   position: relative;
-  min-width: 140px;
+  min-width: 150px;
 }
 
-.probe-glow {
+.hook-glow {
   position: absolute;
   inset: -2px;
   border-radius: var(--radius-lg);
@@ -742,19 +790,11 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.probe-node.process .probe-glow {
-  box-shadow: 0 0 30px var(--status-info);
-}
+.hook-node.process .hook-glow { box-shadow: 0 0 30px var(--chart-exec); }
+.hook-node.file .hook-glow { box-shadow: 0 0 30px var(--chart-file); }
+.hook-node.network .hook-glow { box-shadow: 0 0 30px var(--chart-network); }
 
-.probe-node.file .probe-glow {
-  box-shadow: 0 0 30px var(--status-safe);
-}
-
-.probe-node.network .probe-glow {
-  box-shadow: 0 0 30px var(--status-warning);
-}
-
-.probe-node.pulsing .probe-glow {
+.hook-node.pulsing .hook-glow {
   opacity: 0.5;
   animation: glow-pulse 0.3s ease-out;
 }
@@ -764,16 +804,16 @@ onUnmounted(() => {
   100% { opacity: 0; transform: scale(1.1); }
 }
 
-.probe-node:hover {
+.hook-node:hover {
   transform: translateY(-4px);
   box-shadow: var(--shadow-lg);
 }
 
-.probe-node.pulsing {
+.hook-node.pulsing {
   transform: scale(1.02);
 }
 
-.probe-indicator {
+.hook-indicator {
   position: absolute;
   top: 10px;
   right: 10px;
@@ -783,19 +823,19 @@ onUnmounted(() => {
   animation: indicator-pulse 2s ease-in-out infinite;
 }
 
-.probe-node.process .probe-indicator {
-  background: var(--status-info);
-  box-shadow: 0 0 10px var(--status-info);
+.hook-node.process .hook-indicator {
+  background: var(--chart-exec);
+  box-shadow: 0 0 10px var(--chart-exec);
 }
 
-.probe-node.file .probe-indicator {
-  background: var(--status-safe);
-  box-shadow: 0 0 10px var(--status-safe);
+.hook-node.file .hook-indicator {
+  background: var(--chart-file);
+  box-shadow: 0 0 10px var(--chart-file);
 }
 
-.probe-node.network .probe-indicator {
-  background: var(--status-warning);
-  box-shadow: 0 0 10px var(--status-warning);
+.hook-node.network .hook-indicator {
+  background: var(--chart-network);
+  box-shadow: 0 0 10px var(--chart-network);
 }
 
 @keyframes indicator-pulse {
@@ -803,39 +843,51 @@ onUnmounted(() => {
   50% { opacity: 0.6; transform: scale(1.2); }
 }
 
-.probe-node.process { border-color: var(--status-info); }
-.probe-node.file { border-color: var(--status-safe); }
-.probe-node.network { border-color: var(--status-warning); }
+.hook-node.process { border-color: var(--chart-exec); }
+.hook-node.file { border-color: var(--chart-file); }
+.hook-node.network { border-color: var(--chart-network); }
 
-.probe-icon {
+.hook-icon {
   transition: transform 0.3s ease;
 }
 
-.probe-node:hover .probe-icon {
+.hook-node:hover .hook-icon {
   transform: scale(1.1);
 }
 
-.probe-node.process .probe-icon { color: var(--status-info); }
-.probe-node.file .probe-icon { color: var(--status-safe); }
-.probe-node.network .probe-icon { color: var(--status-warning); }
+.hook-node.process .hook-icon { color: var(--chart-exec); }
+.hook-node.file .hook-icon { color: var(--chart-file); }
+.hook-node.network .hook-icon { color: var(--chart-network); }
 
-.probe-name {
+.hook-name {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
   text-align: center;
 }
 
-.probe-tracepoint {
+.hook-signature {
   font-family: var(--font-mono);
   font-size: 9px;
-  color: var(--text-muted);
+  color: #8b5cf6;
   background: var(--bg-void);
   padding: 3px 8px;
   border-radius: var(--radius-sm);
 }
 
-.probe-stats {
+.hook-capability {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--status-blocked);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.hook-stats {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -879,15 +931,9 @@ onUnmounted(() => {
   transition: width 0.3s ease;
 }
 
-.probe-node.process .stat-bar-fill { background: var(--status-info); }
-.probe-node.file .stat-bar-fill { background: var(--status-safe); }
-.probe-node.network .stat-bar-fill { background: var(--status-warning); }
-
-.stat-total {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-}
+.hook-node.process .stat-bar-fill { background: var(--chart-exec); }
+.hook-node.file .stat-bar-fill { background: var(--chart-file); }
+.hook-node.network .stat-bar-fill { background: var(--chart-network); }
 
 /* Data Flow */
 .data-flow {
@@ -910,7 +956,7 @@ onUnmounted(() => {
 }
 
 .flow-stream.active {
-  background: linear-gradient(to bottom, var(--accent-primary), var(--status-learning));
+  background: linear-gradient(to bottom, #8b5cf6, var(--accent-primary));
 }
 
 .stream-particle {
@@ -918,7 +964,7 @@ onUnmounted(() => {
   width: 6px;
   height: 6px;
   left: -2px;
-  background: var(--accent-primary);
+  background: #8b5cf6;
   border-radius: 50%;
   opacity: 0;
 }
@@ -940,14 +986,14 @@ onUnmounted(() => {
   padding: 16px 24px;
   background: linear-gradient(135deg, var(--bg-overlay), var(--bg-elevated));
   border-radius: var(--radius-lg);
-  border: 2px solid var(--accent-primary);
+  border: 2px solid #8b5cf6;
   max-width: 420px;
   margin: 0 auto;
   transition: all 0.3s ease;
 }
 
 .ring-buffer.receiving {
-  border-color: var(--status-learning);
+  border-color: var(--accent-primary);
   box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
 }
 
@@ -956,7 +1002,7 @@ onUnmounted(() => {
 }
 
 .buffer-icon {
-  color: var(--accent-primary);
+  color: #8b5cf6;
   transition: transform 0.3s ease;
 }
 
@@ -972,7 +1018,7 @@ onUnmounted(() => {
 .buffer-pulse {
   position: absolute;
   inset: -8px;
-  border: 2px solid var(--accent-primary);
+  border: 2px solid #8b5cf6;
   border-radius: 50%;
   opacity: 0;
 }
@@ -1044,7 +1090,7 @@ onUnmounted(() => {
 
 .circle-fill {
   fill: none;
-  stroke: var(--accent-primary);
+  stroke: #8b5cf6;
   stroke-width: 3;
   stroke-linecap: round;
   transition: stroke-dasharray 0.3s ease;
@@ -1069,41 +1115,16 @@ onUnmounted(() => {
 /* Legend */
 .diagram-legend {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  justify-content: center;
   padding-top: 16px;
   border-top: 1px solid var(--border-subtle);
-}
-
-.legend-stats {
-  display: flex;
-  justify-content: center;
-  gap: 32px;
-}
-
-.legend-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.stat-number {
-  font-family: var(--font-mono);
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.stat-label {
-  font-size: 10px;
-  color: var(--text-muted);
 }
 
 .legend-items {
   display: flex;
   justify-content: center;
-  gap: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .legend-item {
@@ -1117,7 +1138,9 @@ onUnmounted(() => {
   background: var(--bg-overlay);
 }
 
-.legend-item.process { color: var(--status-info); }
-.legend-item.file { color: var(--status-safe); }
-.legend-item.network { color: var(--status-warning); }
+.legend-item.process { color: var(--chart-exec); }
+.legend-item.file { color: var(--chart-file); }
+.legend-item.network { color: var(--chart-network); }
+.legend-item.blocked { color: var(--status-blocked); }
+.legend-item.allowed { color: var(--status-safe); }
 </style>

@@ -43,6 +43,7 @@ export interface ExecEvent {
     cgroupId: string
     comm: string
     parentComm: string
+    blocked?: boolean
 }
 
 export interface ConnectEvent {
@@ -53,6 +54,7 @@ export interface ConnectEvent {
     family: number
     port: number
     addr: string
+    blocked?: boolean
 }
 
 export interface FileEvent {
@@ -62,6 +64,7 @@ export interface FileEvent {
     cgroupId: string
     flags: number
     filename: string
+    blocked?: boolean
 }
 
 export type StreamEvent = ExecEvent | ConnectEvent | FileEvent

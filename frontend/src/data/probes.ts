@@ -3,8 +3,10 @@
 export interface ProbeInfo {
   id: string
   name: string
-  tracepoint: string
+  hook: string
+  hookType: 'lsm' | 'tracepoint'
   description: string
+  capability: 'monitor' | 'block'
   sourceCode: string
   kernelStructs: string[]
   category: 'process' | 'file' | 'network'
@@ -13,112 +15,123 @@ export interface ProbeInfo {
 export const probes: ProbeInfo[] = [
   {
     id: 'exec',
-    name: 'Process Execution Monitor',
-    tracepoint: 'tp/sched/sched_process_exec',
-    description: 'Monitors all process execution events. When any process calls execve() system call, this probe triggers and captures the new process PID, parent process information, command name, and Cgroup ID for container detection.',
-    sourceCode: `SEC("tp/sched/sched_process_exec")
-int handle_exec(struct trace_event_raw_sched_process_exec* ctx) {
+    name: 'Process Execution',
+    hook: 'lsm/bprm_check_security',
+    hookType: 'lsm',
+    capability: 'block',
+    description: 'LSM hook that intercepts all process execution via execve(). Can actively BLOCK malicious binaries from executing or ALERT on suspicious execution patterns. Captures PID, parent process, command name, and cgroup ID for container detection.',
+    sourceCode: `SEC("lsm/bprm_check_security")
+int BPF_PROG(lsm_bprm_check, struct linux_binprm* bprm, int ret) {
     struct exec_event* event;
     struct task_struct* task = (struct task_struct*)bpf_get_current_task_btf();
+    
+    // Check if this binary should be blocked
+    struct file* file = bprm->file;
+    struct dentry* dentry = BPF_CORE_READ(file, f_path.dentry);
+    u8 action = check_file_action(dentry, event->filename);
     
     event = bpf_ringbuf_reserve(&events, sizeof(*event), 0);
     if (!event) return 0;
     
+    event->type = EVENT_TYPE_EXEC;
     event->pid = bpf_get_current_pid_tgid() >> 32;
     event->ppid = BPF_CORE_READ(task, real_parent, tgid);
-    event->cgroup_id = bpf_get_current_cgroup_id();
-    bpf_get_current_comm(&event->comm, sizeof(event->comm));
-    
-    // Read parent command name
-    struct task_struct* parent = BPF_CORE_READ(task, real_parent);
-    bpf_probe_read_kernel_str(&event->pcomm, sizeof(event->pcomm), 
-                              BPF_CORE_READ(parent, comm));
+    event->blocked = (action == ACTION_BLOCK) ? 1 : 0;
     
     bpf_ringbuf_submit(event, 0);
-    return 0;
+    
+    // Return -EPERM to block execution
+    return (action == ACTION_BLOCK) ? -EPERM : 0;
 }`,
     kernelStructs: [
+      'linux_binprm.file',
       'task_struct.pid',
-      'task_struct.tgid', 
       'task_struct.real_parent',
-      'task_struct.comm[16]'
+      'dentry.d_name'
     ],
     category: 'process'
   },
   {
     id: 'openat',
-    name: 'File Access Monitor',
-    tracepoint: 'tp/syscalls/sys_enter_openat',
-    description: 'Monitors file access operations through the openat() system call. Captures the file path, access flags, and process information. Essential for detecting unauthorized file access patterns.',
-    sourceCode: `SEC("tp/syscalls/sys_enter_openat")
-int handle_openat(struct trace_event_raw_sys_enter* ctx) {
-    struct file_event* event;
+    name: 'File Access',
+    hook: 'lsm/file_open',
+    hookType: 'lsm',
+    capability: 'block',
+    description: 'LSM hook that intercepts all file open operations. Can actively BLOCK access to sensitive files like /etc/shadow or ALERT on suspicious file access patterns. Uses parent/filename matching for efficient kernel-side rule enforcement.',
+    sourceCode: `SEC("lsm/file_open")
+int BPF_PROG(lsm_file_open, struct file* file, int ret) {
+    struct file_open_event* event;
+    
+    struct dentry* dentry = BPF_CORE_READ(file, f_path.dentry);
+    char path_buf[PATH_MAX_LEN];
+    u8 action = check_file_action(dentry, path_buf);
+    
+    // Only emit event if monitored or blocked
+    if (action == 0) return 0;
     
     event = bpf_ringbuf_reserve(&events, sizeof(*event), 0);
-    if (!event) return 0;
+    if (!event) return (action == ACTION_BLOCK) ? -EPERM : 0;
     
+    event->type = EVENT_TYPE_FILE;
     event->pid = bpf_get_current_pid_tgid() >> 32;
-    event->cgroup_id = bpf_get_current_cgroup_id();
-    
-    // Read flags from syscall args
-    event->flags = (u32)ctx->args[2];
-    
-    // Read filename from userspace
-    const char* filename = (const char*)ctx->args[1];
-    bpf_probe_read_user_str(&event->filename, sizeof(event->filename), filename);
+    event->blocked = (action == ACTION_BLOCK) ? 1 : 0;
+    __builtin_memcpy(event->filename, path_buf, PATH_MAX_LEN);
     
     bpf_ringbuf_submit(event, 0);
-    return 0;
+    
+    // Return -EPERM to deny file access
+    return (action == ACTION_BLOCK) ? -EPERM : 0;
 }`,
     kernelStructs: [
-      'trace_event_raw_sys_enter.args[]',
-      'task_struct.pid',
-      'cgroup_id'
+      'file.f_path.dentry',
+      'dentry.d_parent',
+      'dentry.d_name.name',
+      'qstr.len'
     ],
     category: 'file'
   },
   {
     id: 'connect',
-    name: 'Network Connection Monitor',
-    tracepoint: 'tp/syscalls/sys_enter_connect',
-    description: 'Monitors outbound network connections via the connect() system call. Captures destination IP address, port, protocol family (IPv4/IPv6), and the initiating process. Critical for detecting C2 callbacks and data exfiltration.',
-    sourceCode: `SEC("tp/syscalls/sys_enter_connect")
-int handle_connect(struct trace_event_raw_sys_enter* ctx) {
+    name: 'Network Connection',
+    hook: 'lsm/socket_connect',
+    hookType: 'lsm',
+    capability: 'block',
+    description: 'LSM hook that intercepts outbound network connections. Can actively BLOCK connections to malicious ports (e.g., reverse shells on 4444) or ALERT on suspicious network activity. Critical for preventing C2 callbacks and data exfiltration.',
+    sourceCode: `SEC("lsm/socket_connect")
+int BPF_PROG(lsm_socket_connect, struct socket* sock, 
+             struct sockaddr* address, int addrlen, int ret) {
     struct connect_event* event;
-    struct sockaddr_in* addr4;
-    struct sockaddr_in6* addr6;
     
-    event = bpf_ringbuf_reserve(&events, sizeof(*event), 0);
-    if (!event) return 0;
+    u16 family = address->sa_family;
+    if (family != AF_INET && family != AF_INET6) return 0;
     
-    event->pid = bpf_get_current_pid_tgid() >> 32;
-    event->cgroup_id = bpf_get_current_cgroup_id();
-    
-    // Read socket address from userspace
-    struct sockaddr* addr = (struct sockaddr*)ctx->args[1];
-    bpf_probe_read_user(&event->family, sizeof(event->family), &addr->sa_family);
-    
-    if (event->family == AF_INET) {
-        addr4 = (struct sockaddr_in*)addr;
-        bpf_probe_read_user(&event->port, sizeof(event->port), &addr4->sin_port);
-        bpf_probe_read_user(&event->addr_v4, sizeof(event->addr_v4), &addr4->sin_addr);
-    } else if (event->family == AF_INET6) {
-        addr6 = (struct sockaddr_in6*)addr;
-        bpf_probe_read_user(&event->port, sizeof(event->port), &addr6->sin6_port);
-        bpf_probe_read_user(&event->addr_v6, sizeof(event->addr_v6), &addr6->sin6_addr);
+    u16 port = 0;
+    if (family == AF_INET) {
+        struct sockaddr_in* addr4 = (struct sockaddr_in*)address;
+        port = __builtin_bswap16(addr4->sin_port);
     }
     
-    event->port = __builtin_bswap16(event->port); // Network to host byte order
+    // Check if port should be blocked
+    u8* action = bpf_map_lookup_elem(&blocked_ports, &port);
+    u8 should_block = action && (*action == ACTION_BLOCK);
+    
+    event = bpf_ringbuf_reserve(&events, sizeof(*event), 0);
+    if (!event) return should_block ? -EPERM : 0;
+    
+    event->type = EVENT_TYPE_CONNECT;
+    event->port = port;
+    event->blocked = should_block ? 1 : 0;
     
     bpf_ringbuf_submit(event, 0);
-    return 0;
+    
+    // Return -EPERM to block the connection
+    return should_block ? -EPERM : 0;
 }`,
     kernelStructs: [
+      'socket.sk',
       'sockaddr.sa_family',
       'sockaddr_in.sin_port',
-      'sockaddr_in.sin_addr',
-      'sockaddr_in6.sin6_port',
-      'sockaddr_in6.sin6_addr'
+      'sockaddr_in6.sin6_port'
     ],
     category: 'network'
   }
@@ -133,14 +146,32 @@ export interface KernelStruct {
 
 export const kernelStructs: KernelStruct[] = [
   {
+    name: 'linux_binprm',
+    description: 'Binary program descriptor used during execve(). Contains all information needed to execute a new program.',
+    fields: [
+      { name: 'file', type: 'struct file*', description: 'File being executed' },
+      { name: 'filename', type: 'const char*', description: 'Name of file to execute' },
+      { name: 'interp', type: 'const char*', description: 'Interpreter name (for scripts)' },
+      { name: 'cred', type: 'struct cred*', description: 'Credentials for the new process' }
+    ]
+  },
+  {
+    name: 'dentry',
+    description: 'Directory entry - represents a path component in the filesystem hierarchy.',
+    fields: [
+      { name: 'd_name', type: 'struct qstr', description: 'Filename component' },
+      { name: 'd_parent', type: 'struct dentry*', description: 'Parent directory entry' },
+      { name: 'd_inode', type: 'struct inode*', description: 'Associated inode' }
+    ]
+  },
+  {
     name: 'task_struct',
     description: 'The fundamental process descriptor in Linux. Contains all information about a process/thread.',
     fields: [
       { name: 'pid', type: 'pid_t', description: 'Process ID (thread ID)' },
       { name: 'tgid', type: 'pid_t', description: 'Thread Group ID (process ID)' },
       { name: 'real_parent', type: 'struct task_struct*', description: 'Pointer to parent process' },
-      { name: 'comm[16]', type: 'char[16]', description: 'Executable name (max 16 chars)' },
-      { name: 'cgroups', type: 'struct css_set*', description: 'Control group membership' }
+      { name: 'comm[16]', type: 'char[16]', description: 'Executable name (max 16 chars)' }
     ]
   },
   {
@@ -153,4 +184,3 @@ export const kernelStructs: KernelStruct[] = [
     ]
   }
 ]
-
