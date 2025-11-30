@@ -6,7 +6,8 @@
 
 #define TASK_COMM_LEN 16
 #define PATH_MAX_LEN 256
-#define MAX_PATH_DEPTH 20
+#define MAX_PATH_DEPTH 16
+#define MAX_NAME_LEN 48
 #define EVENT_TYPE_EXEC 1
 #define EVENT_TYPE_FILE_OPEN 2
 #define EVENT_TYPE_CONNECT 3
@@ -74,17 +75,18 @@ struct {
     __type(value, char[PATH_MAX_LEN]);
 } path_buffer SEC(".maps");
 
-struct path_segment {
-    char name[64];
-    u32 len;
+struct path_build_ctx {
+    char names[MAX_PATH_DEPTH][MAX_NAME_LEN];
+    u32 lens[MAX_PATH_DEPTH];
+    int count;
 };
 
 struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
     __uint(max_entries, 1);
     __type(key, u32);
-    __type(value, struct path_segment[MAX_PATH_DEPTH]);
-} path_segments SEC(".maps");
+    __type(value, struct path_build_ctx);
+} path_ctx SEC(".maps");
 
 static __always_inline u32 get_parent_pid(struct task_struct* task)
 {
@@ -95,86 +97,74 @@ static __always_inline u32 get_parent_pid(struct task_struct* task)
 
 static __always_inline u8 get_path_action(struct dentry* dentry, char* path_buf)
 {
-    u32 seg_key = 0;
-    struct path_segment* segments = bpf_map_lookup_elem(&path_segments, &seg_key);
-    if (!segments)
+    u32 ctx_key = 0;
+    struct path_build_ctx* ctx = bpf_map_lookup_elem(&path_ctx, &ctx_key);
+    if (!ctx)
         return 0;
 
-    int seg_count = 0;
+    ctx->count = 0;
     struct dentry* d = dentry;
-    struct dentry* parent;
 
-#pragma unroll
-    for (int i = 0; i < MAX_PATH_DEPTH; i++) {
-        if (!d)
-            break;
-
-        parent = BPF_CORE_READ(d, d_parent);
+    // Walk up dentry tree, collect path components
+    for (int i = 0; i < MAX_PATH_DEPTH && d; i++) {
+        struct dentry* parent = BPF_CORE_READ(d, d_parent);
         if (parent == d)
             break;
 
         struct qstr d_name;
         bpf_probe_read_kernel(&d_name, sizeof(d_name), &d->d_name);
 
-        if (d_name.len > 0 && d_name.len < 64) {
-            bpf_probe_read_kernel_str(segments[i].name, 64, d_name.name);
-            segments[i].len = d_name.len;
-            seg_count = i + 1;
+        u32 len = d_name.len;
+        if (len > 0 && len < MAX_NAME_LEN) {
+            bpf_probe_read_kernel_str(ctx->names[i], MAX_NAME_LEN, d_name.name);
+            ctx->lens[i] = len;
+            ctx->count = i + 1;
         }
-
         d = parent;
     }
 
-    if (seg_count == 0)
+    if (ctx->count == 0)
         return 0;
 
-    // build path from root to leaf (reverse order of segments)
+    // Build path: iterate from root (high index) to leaf (index 0)
     __builtin_memset(path_buf, 0, PATH_MAX_LEN);
     int pos = 0;
+    int cnt = ctx->count;
 
-#pragma unroll
     for (int i = MAX_PATH_DEPTH - 1; i >= 0; i--) {
-        if (i >= seg_count)
+        if (i >= cnt)
             continue;
+        if (pos >= PATH_MAX_LEN - 2)
+            break;
 
-        if (pos < PATH_MAX_LEN - 1) {
-            path_buf[pos++] = '/';
-        }
+        path_buf[pos++] = '/';
 
-        u32 len = segments[i].len;
-        if (len > 63)
-            len = 63;
+        u32 len = ctx->lens[i];
+        if (len > MAX_NAME_LEN - 1)
+            len = MAX_NAME_LEN - 1;
 
-#pragma unroll
-        for (u32 j = 0; j < 63; j++) {
-            if (j >= len || pos >= PATH_MAX_LEN - 1)
-                break;
-            path_buf[pos++] = segments[i].name[j];
+        for (u32 j = 0; j < MAX_NAME_LEN - 1 && j < len && pos < PATH_MAX_LEN - 1; j++) {
+            path_buf[pos++] = ctx->names[i][j];
         }
     }
 
-    u8* action = bpf_map_lookup_elem(&monitored_paths, path_buf);
-    if (action)
-        return *action;
+    // look up full path
+    u8* val = bpf_map_lookup_elem(&monitored_paths, path_buf);
+    if (val)
+        return *val;
 
-    // fallback matching just the filename (leaf segment = segments[0])
-    if (seg_count > 0) {
-        char basename_buf[PATH_MAX_LEN];
-        __builtin_memset(basename_buf, 0, PATH_MAX_LEN);
-        u32 len = segments[0].len;
-        if (len > PATH_MAX_LEN - 1)
-            len = PATH_MAX_LEN - 1;
-
-#pragma unroll
-        for (u32 j = 0; j < 63; j++) {
-            if (j >= len)
-                break;
-            basename_buf[j] = segments[0].name[j];
+    // Fallback: try just the filename (leaf = index 0)
+    if (ctx->count > 0) {
+        char basename[PATH_MAX_LEN] = {};
+        u32 len = ctx->lens[0];
+        if (len > MAX_NAME_LEN - 1)
+            len = MAX_NAME_LEN - 1;
+        for (u32 j = 0; j < len && j < MAX_NAME_LEN - 1; j++) {
+            basename[j] = ctx->names[0][j];
         }
-
-        action = bpf_map_lookup_elem(&monitored_paths, basename_buf);
-        if (action)
-            return *action;
+        val = bpf_map_lookup_elem(&monitored_paths, basename);
+        if (val)
+            return *val;
     }
 
     return 0;
@@ -188,8 +178,8 @@ int BPF_PROG(lsm_bprm_check, struct linux_binprm* bprm)
     struct task_struct* parent;
     u64 pid_tgid = bpf_get_current_pid_tgid();
     u32 pid = pid_tgid >> 32;
-    u8 action = 0;
-    int should_block = 0;
+    int ret = 0;
+    u8 blocked = 0;
 
     struct file* file = BPF_CORE_READ(bprm, file);
     if (file) {
@@ -198,9 +188,10 @@ int BPF_PROG(lsm_bprm_check, struct linux_binprm* bprm)
             u32 key = 0;
             char* path_buf = bpf_map_lookup_elem(&path_buffer, &key);
             if (path_buf) {
-                action = get_path_action(dentry, path_buf);
+                u8 action = get_path_action(dentry, path_buf);
                 if (action == ACTION_BLOCK) {
-                    should_block = 1;
+                    ret = -EPERM;
+                    blocked = 1;
                 }
             }
         }
@@ -208,13 +199,13 @@ int BPF_PROG(lsm_bprm_check, struct linux_binprm* bprm)
 
     event = bpf_ringbuf_reserve(&events, sizeof(*event), 0);
     if (!event)
-        return should_block ? -EPERM : 0;
+        return ret;
 
     event->type = EVENT_TYPE_EXEC;
     event->pid = pid;
     event->ppid = get_parent_pid(task);
     event->cgroup_id = bpf_get_current_cgroup_id();
-    event->blocked = should_block ? 1 : 0;
+    event->blocked = blocked;
     bpf_get_current_comm(&event->comm, sizeof(event->comm));
 
     parent = BPF_CORE_READ(task, real_parent);
@@ -225,8 +216,7 @@ int BPF_PROG(lsm_bprm_check, struct linux_binprm* bprm)
     }
 
     bpf_ringbuf_submit(event, 0);
-
-    return should_block ? -EPERM : 0;
+    return ret;
 }
 
 SEC("lsm/file_open")
@@ -235,8 +225,8 @@ int BPF_PROG(lsm_file_open, struct file* file)
     struct file_open_event* event;
     u64 pid_tgid = bpf_get_current_pid_tgid();
     u32 pid = pid_tgid >> 32;
-    u8 action = 0;
-    int should_block = 0;
+    int ret = 0;
+    u8 blocked = 0;
 
     struct dentry* dentry = BPF_CORE_READ(file, f_path.dentry);
     if (!dentry)
@@ -247,25 +237,28 @@ int BPF_PROG(lsm_file_open, struct file* file)
     if (!path_buf)
         return 0;
 
-    action = get_path_action(dentry, path_buf);
+    u8 action = get_path_action(dentry, path_buf);
     if (!action)
         return 0;
 
-    should_block = (action == ACTION_BLOCK);
+    if (action == ACTION_BLOCK) {
+        ret = -EPERM;
+        blocked = 1;
+    }
 
     event = bpf_ringbuf_reserve(&events, sizeof(*event), 0);
     if (!event)
-        return should_block ? -EPERM : 0;
+        return ret;
 
     event->type = EVENT_TYPE_FILE_OPEN;
     event->pid = pid;
     event->cgroup_id = bpf_get_current_cgroup_id();
     event->flags = BPF_CORE_READ(file, f_flags);
-    event->blocked = should_block ? 1 : 0;
+    event->blocked = blocked;
     __builtin_memcpy(event->filename, path_buf, PATH_MAX_LEN);
     bpf_ringbuf_submit(event, 0);
 
-    return should_block ? -EPERM : 0;
+    return ret;
 }
 
 SEC("lsm/socket_connect")
@@ -274,8 +267,8 @@ int BPF_PROG(lsm_socket_connect, struct socket* sock, struct sockaddr* address, 
     struct connect_event* event;
     u64 pid_tgid = bpf_get_current_pid_tgid();
     u32 pid = pid_tgid >> 32;
-    u8 action = 0;
-    int should_block = 0;
+    int ret = 0;
+    u8 blocked = 0;
     u16 port = 0;
     u16 family = 0;
 
@@ -301,19 +294,22 @@ int BPF_PROG(lsm_socket_connect, struct socket* sock, struct sockaddr* address, 
     u8* port_action = bpf_map_lookup_elem(&blocked_ports, &port);
     if (!port_action)
         return 0;
-    action = *port_action;
-    should_block = (action == ACTION_BLOCK);
+
+    if (*port_action == ACTION_BLOCK) {
+        ret = -EPERM;
+        blocked = 1;
+    }
 
     event = bpf_ringbuf_reserve(&events, sizeof(*event), 0);
     if (!event)
-        return should_block ? -EPERM : 0;
+        return ret;
 
     event->type = EVENT_TYPE_CONNECT;
     event->pid = pid;
     event->cgroup_id = bpf_get_current_cgroup_id();
     event->family = family;
     event->port = port;
-    event->blocked = should_block ? 1 : 0;
+    event->blocked = blocked;
     event->addr_v4 = 0;
     __builtin_memset(event->addr_v6, 0, 16);
 
@@ -326,8 +322,7 @@ int BPF_PROG(lsm_socket_connect, struct socket* sock, struct sockaddr* address, 
     }
 
     bpf_ringbuf_submit(event, 0);
-
-    return should_block ? -EPERM : 0;
+    return ret;
 }
 
 char LICENSE[] SEC("license") = "GPL";
