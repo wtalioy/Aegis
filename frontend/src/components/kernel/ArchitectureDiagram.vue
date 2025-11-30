@@ -60,10 +60,10 @@ const formatNumber = (n: number): string => {
 const handleEvent = (event: StreamEvent) => {
   const id = `${event.type}-${Date.now()}-${Math.random()}`
   const blocked = event.blocked === true
-  
+
   let process: RecentEvent
   let probeType: string
-  
+
   if (event.type === 'exec') {
     process = {
       id,
@@ -98,16 +98,16 @@ const handleEvent = (event: StreamEvent) => {
     }
     probeType = 'connect'
   }
-  
+
   recentEvents.value = [process, ...recentEvents.value].slice(0, maxRecentEvents)
-  
+
   activeFlows.value.push({ id, type: event.type, blocked, startTime: Date.now() })
-  
+
   pulsingProbes.value.add(probeType)
   setTimeout(() => {
     pulsingProbes.value.delete(probeType)
   }, 300)
-  
+
   setTimeout(() => {
     activeFlows.value = activeFlows.value.filter(f => f.id !== id)
   }, 1000)
@@ -165,10 +165,7 @@ onUnmounted(() => {
       <div class="activity-meter">
         <span class="meter-label">Throughput</span>
         <div class="meter-bar">
-          <div 
-            class="meter-fill" 
-            :style="{ width: Math.min(totalEventsPerSec * 5, 100) + '%' }"
-          ></div>
+          <div class="meter-fill" :style="{ width: Math.min(totalEventsPerSec * 5, 100) + '%' }"></div>
         </div>
         <span class="meter-value">{{ totalEventsPerSec }}/s</span>
       </div>
@@ -177,16 +174,12 @@ onUnmounted(() => {
     <!-- User Space -->
     <div class="space-section user-space">
       <div class="space-label">USER SPACE</div>
-      
+
       <!-- Recent Events - Live Feed -->
       <div class="events-live">
         <TransitionGroup name="event-slide">
-          <div 
-            v-for="evt in recentEvents"
-            :key="evt.id"
-            class="event-box"
-            :class="[getEventColorClass(evt.type), { blocked: evt.blocked }]"
-          >
+          <div v-for="evt in recentEvents" :key="evt.id" class="event-box"
+            :class="[getEventColorClass(evt.type), { blocked: evt.blocked }]">
             <div class="event-status">
               <ShieldOff v-if="evt.blocked" :size="12" class="status-icon blocked" />
               <ShieldCheck v-else :size="12" class="status-icon allowed" />
@@ -199,31 +192,34 @@ onUnmounted(() => {
             <span class="event-syscall">{{ evt.syscall }}</span>
           </div>
         </TransitionGroup>
-        
+
         <div v-if="recentEvents.length === 0" class="empty-events">
           <Zap :size="24" class="empty-icon" />
           <span>Waiting for events...</span>
         </div>
       </div>
-      
+
       <!-- Syscall Flows -->
       <div class="syscall-flows">
         <div class="flow-lane" :class="{ active: isFlowActive('exec') }">
           <div class="flow-label">execve()</div>
           <div class="flow-track">
-            <div class="flow-particle" v-for="flow in activeFlows.filter(f => f.type === 'exec')" :key="flow.id" :class="{ blocked: flow.blocked }"></div>
+            <div class="flow-particle" v-for="flow in activeFlows.filter(f => f.type === 'exec')" :key="flow.id"
+              :class="{ blocked: flow.blocked }"></div>
           </div>
         </div>
         <div class="flow-lane" :class="{ active: isFlowActive('file') }">
           <div class="flow-label">open()</div>
           <div class="flow-track">
-            <div class="flow-particle" v-for="flow in activeFlows.filter(f => f.type === 'file')" :key="flow.id" :class="{ blocked: flow.blocked }"></div>
+            <div class="flow-particle" v-for="flow in activeFlows.filter(f => f.type === 'file')" :key="flow.id"
+              :class="{ blocked: flow.blocked }"></div>
           </div>
         </div>
         <div class="flow-lane" :class="{ active: isFlowActive('connect') }">
           <div class="flow-label">connect()</div>
           <div class="flow-track">
-            <div class="flow-particle" v-for="flow in activeFlows.filter(f => f.type === 'connect')" :key="flow.id" :class="{ blocked: flow.blocked }"></div>
+            <div class="flow-particle" v-for="flow in activeFlows.filter(f => f.type === 'connect')" :key="flow.id"
+              :class="{ blocked: flow.blocked }"></div>
           </div>
         </div>
       </div>
@@ -246,22 +242,16 @@ onUnmounted(() => {
     <!-- Kernel Space -->
     <div class="space-section kernel-space" :class="{ active: activeFlows.length > 0 }">
       <div class="space-label">KERNEL SPACE</div>
-      
+
       <!-- LSM Hooks -->
       <div class="hooks-row">
-        <div 
-          v-for="probe in probes"
-          :key="probe.id"
-          class="hook-node"
-          :class="[
-            probe.category, 
-            { 
-              active: getStatsForProbe(probe.id)?.active,
-              pulsing: isProbePulsing(probe.id)
-            }
-          ]"
-          @click="$emit('selectProbe', probe)"
-        >
+        <div v-for="probe in probes" :key="probe.id" class="hook-node" :class="[
+          probe.category,
+          {
+            active: getStatsForProbe(probe.id)?.active,
+            pulsing: isProbePulsing(probe.id)
+          }
+        ]" @click="$emit('selectProbe', probe)">
           <div class="hook-glow"></div>
           <div class="hook-indicator"></div>
           <component :is="getProbeIcon(probe.category)" :size="20" class="hook-icon" />
@@ -277,10 +267,8 @@ onUnmounted(() => {
               <span class="stat-unit">/sec</span>
             </div>
             <div class="stat-bar">
-              <div 
-                class="stat-bar-fill" 
-                :style="{ width: Math.min((getStatsForProbe(probe.id)?.eventsRate || 0) * 10, 100) + '%' }"
-              ></div>
+              <div class="stat-bar-fill"
+                :style="{ width: Math.min((getStatsForProbe(probe.id)?.eventsRate || 0) * 10, 100) + '%' }"></div>
             </div>
           </div>
         </div>
@@ -289,12 +277,7 @@ onUnmounted(() => {
       <!-- Data Flow to Ring Buffer -->
       <div class="data-flow">
         <div class="flow-streams">
-          <div 
-            v-for="i in 3" 
-            :key="i"
-            class="flow-stream"
-            :class="{ active: activeFlows.length > 0 }"
-          >
+          <div v-for="i in 3" :key="i" class="flow-stream" :class="{ active: activeFlows.length > 0 }">
             <div class="stream-particle"></div>
           </div>
         </div>
@@ -316,19 +299,12 @@ onUnmounted(() => {
         <div class="buffer-meter">
           <div class="meter-ring">
             <svg viewBox="0 0 36 36" class="circular-chart">
-              <path
-                class="circle-bg"
-                d="M18 2.0845
+              <path class="circle-bg" d="M18 2.0845
                   a 15.9155 15.9155 0 0 1 0 31.831
-                  a 15.9155 15.9155 0 0 1 0 -31.831"
-              />
-              <path
-                class="circle-fill"
-                :stroke-dasharray="`${Math.min(totalEventsPerSec * 2, 100)}, 100`"
-                d="M18 2.0845
+                  a 15.9155 15.9155 0 0 1 0 -31.831" />
+              <path class="circle-fill" :stroke-dasharray="`${Math.min(totalEventsPerSec * 2, 100)}, 100`" d="M18 2.0845
                   a 15.9155 15.9155 0 0 1 0 31.831
-                  a 15.9155 15.9155 0 0 1 0 -31.831"
-              />
+                  a 15.9155 15.9155 0 0 1 0 -31.831" />
             </svg>
             <span class="meter-text">{{ totalEventsPerSec }}</span>
           </div>
@@ -401,8 +377,17 @@ onUnmounted(() => {
 }
 
 @keyframes live-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-  50% { opacity: 0.8; box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
 }
 
 .live-text {
@@ -417,12 +402,12 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  background: var(--status-blocked-dim);
-  border: 1px solid var(--status-blocked);
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.3);
   border-radius: var(--radius-full);
   font-size: 10px;
-  font-weight: 600;
-  color: var(--status-blocked);
+  font-weight: 500;
+  color: #8b5cf6;
 }
 
 .activity-meter {
@@ -528,9 +513,17 @@ onUnmounted(() => {
   background: linear-gradient(135deg, var(--status-blocked-dim), transparent);
 }
 
-.event-box.process { border-color: var(--chart-exec); }
-.event-box.file { border-color: var(--chart-file); }
-.event-box.network { border-color: var(--chart-network); }
+.event-box.process {
+  border-color: var(--chart-exec);
+}
+
+.event-box.file {
+  border-color: var(--chart-file);
+}
+
+.event-box.network {
+  border-color: var(--chart-network);
+}
 
 .event-box.process.blocked,
 .event-box.file.blocked,
@@ -563,9 +556,17 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.event-box.process .event-icon { color: var(--chart-exec); }
-.event-box.file .event-icon { color: var(--chart-file); }
-.event-box.network .event-icon { color: var(--chart-network); }
+.event-box.process .event-icon {
+  color: var(--chart-exec);
+}
+
+.event-box.file .event-icon {
+  color: var(--chart-file);
+}
+
+.event-box.network .event-icon {
+  color: var(--chart-network);
+}
 
 .event-info {
   display: flex;
@@ -617,6 +618,7 @@ onUnmounted(() => {
     opacity: 0;
     transform: translateY(-20px) scale(0.9);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -628,6 +630,7 @@ onUnmounted(() => {
     opacity: 1;
     transform: translateX(0);
   }
+
   to {
     opacity: 0;
     transform: translateX(20px);
@@ -648,8 +651,15 @@ onUnmounted(() => {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Syscall Flow Lanes */
@@ -704,8 +714,15 @@ onUnmounted(() => {
 }
 
 @keyframes flow-down {
-  0% { top: -12px; opacity: 1; }
-  100% { top: 100%; opacity: 0; }
+  0% {
+    top: -12px;
+    opacity: 1;
+  }
+
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
 }
 
 /* LSM Boundary */
@@ -740,8 +757,15 @@ onUnmounted(() => {
 }
 
 @keyframes boundary-sweep {
-  0% { left: -100%; opacity: 1; }
-  100% { left: 100%; opacity: 0; }
+  0% {
+    left: -100%;
+    opacity: 1;
+  }
+
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
 }
 
 .boundary-label {
@@ -790,9 +814,17 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.hook-node.process .hook-glow { box-shadow: 0 0 30px var(--chart-exec); }
-.hook-node.file .hook-glow { box-shadow: 0 0 30px var(--chart-file); }
-.hook-node.network .hook-glow { box-shadow: 0 0 30px var(--chart-network); }
+.hook-node.process .hook-glow {
+  box-shadow: 0 0 30px var(--chart-exec);
+}
+
+.hook-node.file .hook-glow {
+  box-shadow: 0 0 30px var(--chart-file);
+}
+
+.hook-node.network .hook-glow {
+  box-shadow: 0 0 30px var(--chart-network);
+}
 
 .hook-node.pulsing .hook-glow {
   opacity: 0.5;
@@ -800,8 +832,15 @@ onUnmounted(() => {
 }
 
 @keyframes glow-pulse {
-  0% { opacity: 0.8; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.1); }
+  0% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.1);
+  }
 }
 
 .hook-node:hover {
@@ -839,13 +878,30 @@ onUnmounted(() => {
 }
 
 @keyframes indicator-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(1.2); }
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.6;
+    transform: scale(1.2);
+  }
 }
 
-.hook-node.process { border-color: var(--chart-exec); }
-.hook-node.file { border-color: var(--chart-file); }
-.hook-node.network { border-color: var(--chart-network); }
+.hook-node.process {
+  border-color: var(--chart-exec);
+}
+
+.hook-node.file {
+  border-color: var(--chart-file);
+}
+
+.hook-node.network {
+  border-color: var(--chart-network);
+}
 
 .hook-icon {
   transition: transform 0.3s ease;
@@ -855,9 +911,17 @@ onUnmounted(() => {
   transform: scale(1.1);
 }
 
-.hook-node.process .hook-icon { color: var(--chart-exec); }
-.hook-node.file .hook-icon { color: var(--chart-file); }
-.hook-node.network .hook-icon { color: var(--chart-network); }
+.hook-node.process .hook-icon {
+  color: var(--chart-exec);
+}
+
+.hook-node.file .hook-icon {
+  color: var(--chart-file);
+}
+
+.hook-node.network .hook-icon {
+  color: var(--chart-network);
+}
 
 .hook-name {
   font-size: 12px;
@@ -880,11 +944,12 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  background: var(--status-blocked);
-  color: #fff;
+  background: rgba(239, 68, 68, 0.1);
+  color: rgba(239, 68, 68, 0.75);
+  border: 1px solid rgba(239, 68, 68, 0.2);
   border-radius: var(--radius-sm);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .hook-stats {
@@ -931,9 +996,17 @@ onUnmounted(() => {
   transition: width 0.3s ease;
 }
 
-.hook-node.process .stat-bar-fill { background: var(--chart-exec); }
-.hook-node.file .stat-bar-fill { background: var(--chart-file); }
-.hook-node.network .stat-bar-fill { background: var(--chart-network); }
+.hook-node.process .stat-bar-fill {
+  background: var(--chart-exec);
+}
+
+.hook-node.file .stat-bar-fill {
+  background: var(--chart-file);
+}
+
+.hook-node.network .stat-bar-fill {
+  background: var(--chart-network);
+}
 
 /* Data Flow */
 .data-flow {
@@ -974,8 +1047,15 @@ onUnmounted(() => {
 }
 
 @keyframes stream-flow {
-  0% { top: 0; opacity: 1; }
-  100% { top: 100%; opacity: 0; }
+  0% {
+    top: 0;
+    opacity: 1;
+  }
+
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
 }
 
 /* Ring Buffer */
@@ -1011,8 +1091,15 @@ onUnmounted(() => {
 }
 
 @keyframes buffer-bounce {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.2); }
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.2);
+  }
 }
 
 .buffer-pulse {
@@ -1028,8 +1115,15 @@ onUnmounted(() => {
 }
 
 @keyframes buffer-ring {
-  0% { transform: scale(0.8); opacity: 1; }
-  100% { transform: scale(1.5); opacity: 0; }
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
 }
 
 .buffer-info {
@@ -1138,9 +1232,23 @@ onUnmounted(() => {
   background: var(--bg-overlay);
 }
 
-.legend-item.process { color: var(--chart-exec); }
-.legend-item.file { color: var(--chart-file); }
-.legend-item.network { color: var(--chart-network); }
-.legend-item.blocked { color: var(--status-blocked); }
-.legend-item.allowed { color: var(--status-safe); }
+.legend-item.process {
+  color: var(--chart-exec);
+}
+
+.legend-item.file {
+  color: var(--chart-file);
+}
+
+.legend-item.network {
+  color: var(--chart-network);
+}
+
+.legend-item.blocked {
+  color: var(--status-blocked);
+}
+
+.legend-item.allowed {
+  color: var(--status-safe);
+}
 </style>

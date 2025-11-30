@@ -77,8 +77,8 @@ onUnmounted(() => {
         <div class="banner-text">
           <h3>BPF LSM Hooks Enabled</h3>
           <p>EulerGuard uses Linux Security Modules (LSM) hooks for <strong>active defense</strong>.
-            Unlike passive tracepoints, LSM hooks can <span class="highlight-block">BLOCK</span> malicious operations
-            in real-time by returning -EPERM.</p>
+            Unlike passive tracepoints, LSM hooks can block malicious operations
+            in real-time by returning <code>-EPERM</code>.</p>
         </div>
       </div>
       <div class="banner-stats">
@@ -87,7 +87,10 @@ onUnmounted(() => {
           <span class="stat-label">LSM Hooks</span>
         </div>
         <div class="banner-stat">
-          <span class="stat-value">Block + Alert</span>
+          <div class="stat-capabilities">
+            <span class="cap-tag block">Block</span>
+            <span class="cap-tag alert">Alert</span>
+          </div>
           <span class="stat-label">Capabilities</span>
         </div>
       </div>
@@ -311,14 +314,14 @@ onUnmounted(() => {
 .header-badge {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--status-blocked-dim);
-  border: 1px solid var(--status-blocked);
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.3);
   border-radius: var(--radius-full);
-  color: var(--status-blocked);
-  font-size: 12px;
-  font-weight: 600;
+  color: #8b5cf6;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 /* LSM Banner */
@@ -365,34 +368,56 @@ onUnmounted(() => {
   line-height: 1.6;
 }
 
-.highlight-block {
-  background: var(--status-blocked);
-  color: #fff;
-  padding: 1px 6px;
+.banner-text code {
+  background: var(--bg-void);
+  padding: 2px 6px;
   border-radius: var(--radius-sm);
-  font-weight: 600;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .banner-stats {
   display: flex;
-  gap: 24px;
+  gap: 16px;
 }
 
 .banner-stat {
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 6px;
   padding: 12px 20px;
   background: var(--bg-surface);
   border-radius: var(--radius-md);
+  min-width: 100px;
 }
 
 .banner-stat .stat-value {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   color: #8b5cf6;
   font-family: var(--font-mono);
+}
+
+.stat-capabilities {
+  display: flex;
+  gap: 6px;
+}
+
+.cap-tag {
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.cap-tag.block {
+  background: rgba(239, 68, 68, 0.1);
+  color: rgba(239, 68, 68, 0.8);
+}
+
+.cap-tag.alert {
+  background: rgba(251, 191, 36, 0.1);
+  color: rgba(251, 191, 36, 0.8);
 }
 
 .banner-stat .stat-label {
@@ -527,17 +552,19 @@ onUnmounted(() => {
   padding: 3px 8px;
   border-radius: var(--radius-sm);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .hook-capability.block {
-  background: var(--status-blocked);
-  color: #fff;
+  background: rgba(239, 68, 68, 0.1);
+  color: rgba(239, 68, 68, 0.75);
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 .hook-capability.monitor {
-  background: var(--status-warning-dim);
-  color: var(--status-warning);
+  background: rgba(251, 191, 36, 0.1);
+  color: rgba(251, 191, 36, 0.75);
+  border: 1px solid rgba(251, 191, 36, 0.2);
 }
 
 .hook-name {
