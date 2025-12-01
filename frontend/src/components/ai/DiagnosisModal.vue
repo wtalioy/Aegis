@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { X, Sparkles, Loader2, AlertTriangle } from 'lucide-vue-next'
 import { diagnoseSystem, type DiagnosisResult } from '../../lib/api'
+import { marked } from 'marked'
 
 const props = defineProps<{
     visible: boolean
@@ -14,40 +15,18 @@ const emit = defineEmits<{
 const loading = ref(false)
 const error = ref<string | null>(null)
 const result = ref<DiagnosisResult | null>(null)
-const userQuery = ref('')
 
-function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-}
-
-// Simple markdown renderer with HTML escaping
-function renderMarkdown(text: string): string {
-    const escaped = escapeHtml(text)
-    return escaped
-        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/`(.+?)`/g, '<code>$1</code>')
-        .replace(/^- (.+)$/gm, '<li>$1</li>')
-        .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
-        .replace(/\n\n/g, '</p><p>')
-        .replace(/^/, '<p>')
-        .replace(/$/, '</p>')
-}
+marked.setOptions({
+    gfm: true,
+    breaks: true
+})
 
 async function runDiagnosis() {
     loading.value = true
     error.value = null
-    
+
     try {
-        result.value = await diagnoseSystem(userQuery.value || undefined)
+        result.value = await diagnoseSystem()
     } catch (err) {
         error.value = err instanceof Error ? err.message : 'Unknown error'
     } finally {
@@ -55,13 +34,21 @@ async function runDiagnosis() {
     }
 }
 
+const renderedAnalysis = computed(() => {
+    if (!result.value?.analysis) return ''
+    try {
+        return marked.parse(result.value.analysis) as string
+    } catch {
+        return result.value.analysis
+    }
+})
+
 function close() {
     emit('close')
     // Reset state after animation
     setTimeout(() => {
         result.value = null
         error.value = null
-        userQuery.value = ''
     }, 300)
 }
 
@@ -86,14 +73,14 @@ watch(() => props.visible, (visible) => {
                         <X :size="18" />
                     </button>
                 </div>
-                
+
                 <div class="modal-body">
                     <!-- Loading State -->
                     <div v-if="loading" class="loading-state">
                         <Loader2 :size="32" class="spinner" />
                         <p>Analyzing system telemetry...</p>
                     </div>
-                    
+
                     <!-- Error State -->
                     <div v-else-if="error" class="error-state">
                         <AlertTriangle :size="32" class="error-icon" />
@@ -102,31 +89,10 @@ watch(() => props.visible, (visible) => {
                             Retry
                         </button>
                     </div>
-                    
+
                     <!-- Result State -->
                     <div v-else-if="result" class="result-state">
-                        <div class="result-meta">
-                            <span class="provider-badge">
-                                {{ result.provider }}
-                            </span>
-                            <span class="duration">{{ result.durationMs }}ms</span>
-                            <span class="snapshot">{{ result.snapshotSummary }}</span>
-                        </div>
-                        
-                        <div class="analysis-content" v-html="renderMarkdown(result.analysis)">
-                        </div>
-                        
-                        <!-- Ask follow-up -->
-                        <div class="followup-section">
-                            <input 
-                                v-model="userQuery" 
-                                type="text" 
-                                placeholder="Ask a follow-up question..."
-                                @keyup.enter="runDiagnosis"
-                            />
-                            <button @click="runDiagnosis" :disabled="loading">
-                                Ask
-                            </button>
+                        <div class="analysis-content" v-html="renderedAnalysis">
                         </div>
                     </div>
                 </div>
@@ -237,58 +203,80 @@ watch(() => props.visible, (visible) => {
     border-color: var(--border-default);
 }
 
-.result-meta {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-}
-
-.provider-badge {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    font-size: 11px;
-    color: var(--text-secondary);
-}
-
-.duration,
-.snapshot {
-    font-size: 12px;
-    color: var(--text-muted);
-}
-
 .analysis-content {
     line-height: 1.7;
     color: var(--text-primary);
+    font-size: 14px;
 }
 
 .analysis-content :deep(h1),
 .analysis-content :deep(h2),
-.analysis-content :deep(h3) {
+.analysis-content :deep(h3),
+.analysis-content :deep(h4) {
     margin: 16px 0 8px;
     color: var(--text-primary);
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.analysis-content :deep(h1) {
+    font-size: 18px;
+}
+
+.analysis-content :deep(h2) {
+    font-size: 16px;
+}
+
+.analysis-content :deep(h3) {
+    font-size: 15px;
+}
+
+.analysis-content :deep(h4) {
+    font-size: 14px;
+}
+
+.analysis-content :deep(p) {
+    margin: 8px 0;
+}
+
+.analysis-content :deep(ul),
+.analysis-content :deep(ol) {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+
+.analysis-content :deep(li) {
+    margin: 6px 0;
+    line-height: 1.6;
+}
+
+.analysis-content :deep(li)::marker {
+    color: var(--text-muted);
 }
 
 .analysis-content :deep(code) {
     background: var(--bg-elevated);
     padding: 2px 6px;
-    border-radius: var(--radius-sm);
+    border-radius: 4px;
     font-family: var(--font-mono);
     font-size: 13px;
+    color: var(--accent-primary);
 }
 
-.analysis-content :deep(ul) {
-    padding-left: 20px;
+.analysis-content :deep(pre) {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    margin: 12px 0;
+    overflow-x: auto;
 }
 
-.analysis-content :deep(li) {
-    margin: 4px 0;
+.analysis-content :deep(pre code) {
+    background: transparent;
+    padding: 0;
+    font-size: 12px;
+    color: var(--text-primary);
 }
 
 .analysis-content :deep(strong) {
@@ -296,64 +284,76 @@ watch(() => props.visible, (visible) => {
     font-weight: 600;
 }
 
-.followup-section {
-    display: flex;
-    gap: 8px;
-    margin-top: 20px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border-subtle);
+.analysis-content :deep(blockquote) {
+    border-left: 3px solid var(--border-default);
+    margin: 12px 0;
+    padding-left: 16px;
+    color: var(--text-secondary);
 }
 
-.followup-section input {
-    flex: 1;
-    padding: 10px 14px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-size: 13px;
+.analysis-content :deep(a) {
+    color: var(--accent-primary);
+    text-decoration: none;
 }
 
-.followup-section input:focus {
-    outline: none;
-    border-color: var(--border-default);
+.analysis-content :deep(a:hover) {
+    text-decoration: underline;
 }
 
-.followup-section button {
-    padding: 10px 18px;
-    background: var(--text-primary);
+.analysis-content :deep(hr) {
     border: none;
-    border-radius: var(--radius-md);
-    color: var(--bg-void);
+    border-top: 1px solid var(--border-subtle);
+    margin: 16px 0;
+}
+
+.analysis-content :deep(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
     font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: opacity 0.15s;
 }
 
-.followup-section button:hover:not(:disabled) {
-    opacity: 0.9;
+.analysis-content :deep(th),
+.analysis-content :deep(td) {
+    border: 1px solid var(--border-subtle);
+    padding: 8px 12px;
+    text-align: left;
 }
 
-.followup-section button:disabled {
-    background: var(--text-muted);
-    opacity: 0.4;
-    cursor: not-allowed;
+.analysis-content :deep(th) {
+    background: var(--bg-elevated);
+    font-weight: 600;
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 @keyframes slideUp {
-    from { transform: translateY(20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
 @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 </style>
-

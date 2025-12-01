@@ -84,7 +84,7 @@ func (a *App) Bridge() *Bridge        { return a.bridge }
 func (a *App) Stats() *Stats          { return a.stats }
 func (a *App) AIService() *ai.Service { return a.aiService }
 
-func (a *App) Diagnose(ctx context.Context, query string) (*ai.DiagnosisResult, error) {
+func (a *App) Diagnose(ctx context.Context) (*ai.DiagnosisResult, error) {
 	if a.aiService == nil || !a.aiService.IsEnabled() {
 		return nil, nil
 	}
@@ -94,7 +94,7 @@ func (a *App) Diagnose(ctx context.Context, query string) (*ai.DiagnosisResult, 
 		procTreeSize = a.processTree.Size()
 	}
 
-	return a.aiService.Diagnose(ctx, a.stats, a.workloadRegistry, procTreeSize, query)
+	return a.aiService.Diagnose(ctx, a.stats, a.workloadRegistry, procTreeSize)
 }
 
 func (a *App) Chat(ctx context.Context, sessionID, message string) (*ai.ChatResponse, error) {
@@ -109,7 +109,6 @@ func (a *App) Chat(ctx context.Context, sessionID, message string) (*ai.ChatResp
 
 	return a.aiService.Chat(ctx, sessionID, message, a.stats, a.workloadRegistry, procTreeSize)
 }
-
 
 func (a *App) ChatStream(ctx context.Context, sessionID, message string) (<-chan ai.ChatStreamToken, error) {
 	if a.aiService == nil || !a.aiService.IsEnabled() {

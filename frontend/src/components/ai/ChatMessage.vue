@@ -60,7 +60,6 @@ const renderedContent = computed(() => {
             </div>
             <div v-if="isUser" class="text">{{ message.content }}</div>
             <div v-else class="text markdown" v-html="renderedContent" />
-            <span v-if="isStreaming && !isUser" class="typing-cursor">▋</span>
         </div>
     </div>
 </template>
@@ -128,26 +127,6 @@ const renderedContent = computed(() => {
     background: transparent;
     color: var(--text-primary);
     padding: 8px 0;
-}
-
-.typing-cursor {
-    display: inline-block;
-    color: var(--accent-primary);
-    animation: blink 1s infinite;
-    margin-left: 2px;
-}
-
-@keyframes blink {
-
-    0%,
-    50% {
-        opacity: 1;
-    }
-
-    51%,
-    100% {
-        opacity: 0;
-    }
 }
 
 /* Markdown Styles */

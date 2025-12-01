@@ -82,7 +82,6 @@ func (s *Service) Diagnose(
 	stats types.StatsProvider,
 	workloadReg *workload.Registry,
 	procTreeSize int,
-	userQuery string,
 ) (*DiagnosisResult, error) {
 	if !s.enabled {
 		return nil, fmt.Errorf("AI diagnosis is not enabled")
@@ -91,7 +90,7 @@ func (s *Service) Diagnose(
 	startTime := time.Now()
 
 	snapshot := BuildSnapshot(stats, workloadReg, procTreeSize)
-	prompt, err := GeneratePrompt(snapshot, userQuery)
+	prompt, err := GeneratePrompt(snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate prompt: %w", err)
 	}

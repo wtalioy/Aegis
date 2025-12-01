@@ -659,30 +659,31 @@ onUnmounted(() => {
 /* Structs Grid */
 .structs-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 20px;
 }
 
 .struct-card {
-  padding: 20px;
+  padding: 24px;
   background: var(--bg-surface);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
+  overflow: hidden;
 }
 
 .struct-header {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .struct-name {
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--accent-primary);
 }
 
 .struct-desc {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-muted);
   margin: 0 0 16px 0;
   line-height: 1.5;
@@ -691,34 +692,40 @@ onUnmounted(() => {
 .struct-fields {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .field-row {
-  display: grid;
-  grid-template-columns: 100px 140px 1fr;
-  gap: 12px;
-  padding: 8px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 12px 14px;
   background: var(--bg-elevated);
   border-radius: var(--radius-sm);
-  align-items: center;
+  align-items: baseline;
 }
 
 .field-name {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text-primary);
+  flex-shrink: 0;
 }
 
 .field-type {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: #8b5cf6;
+  flex-shrink: 0;
 }
 
 .field-desc {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
+  line-height: 1.4;
+  flex: 1;
+  min-width: 120px;
 }
 
 /* Educational Note */
@@ -801,9 +808,18 @@ onUnmounted(() => {
 }
 
 @media (max-width: 600px) {
-  .field-row {
+  .structs-grid {
     grid-template-columns: 1fr;
+  }
+
+  .field-row {
+    flex-direction: column;
+    align-items: flex-start;
     gap: 4px;
+  }
+
+  .field-desc {
+    min-width: 0;
   }
 }
 </style>

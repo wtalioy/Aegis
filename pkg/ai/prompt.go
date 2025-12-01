@@ -74,11 +74,6 @@ const DiagnosisTemplateText = `## System Diagnosis Request
 {{end}}
 {{end}}
 
-{{if .UserQuery}}
-### User Question
-{{.UserQuery}}
-{{end}}
-
 ---
 
 Please analyze this telemetry data and provide:
@@ -129,13 +124,11 @@ func init() {
 
 type PromptContext struct {
 	types.SystemSnapshot
-	UserQuery string
 }
 
-func GeneratePrompt(snapshot types.SystemSnapshot, userQuery string) (string, error) {
+func GeneratePrompt(snapshot types.SystemSnapshot) (string, error) {
 	ctx := PromptContext{
 		SystemSnapshot: snapshot,
-		UserQuery:      userQuery,
 	}
 	var buf bytes.Buffer
 	if err := diagnosisTmpl.Execute(&buf, ctx); err != nil {

@@ -14,6 +14,7 @@ const {
     error,
     lastContextSummary,
     hasMessages,
+    streamingMessageIndex,
     sendMessage,
     clearChat,
     isStreamingMessage
@@ -233,8 +234,8 @@ const suggestionQuestions = [
                             :is-streaming="isStreamingMessage(i)" @streaming-update="scrollToBottom" />
                     </template>
 
-                    <!-- Loading -->
-                    <div v-if="isLoading" class="typing-indicator">
+                    <!-- Loading (only show when not yet streaming) -->
+                    <div v-if="isLoading && streamingMessageIndex === null" class="typing-indicator">
                         <div class="typing-avatar">
                             <Sparkles :size="14" />
                         </div>

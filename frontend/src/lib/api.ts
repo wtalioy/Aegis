@@ -320,12 +320,8 @@ export async function getAIStatus(): Promise<AIStatus> {
     return resp.json()
 }
 
-export async function diagnoseSystem(query?: string): Promise<DiagnosisResult> {
-    const resp = await fetch('/api/ai/diagnose', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query || '' })
-    })
+export async function diagnoseSystem(): Promise<DiagnosisResult> {
+    const resp = await fetch('/api/ai/diagnose')
 
     if (!resp.ok) {
         try {
