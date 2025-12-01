@@ -345,7 +345,6 @@ onMounted(() => {
 
 <style scoped>
 .workloads-page {
-  max-width: 1400px;
   display: flex;
   flex-direction: column;
   gap: 20px;

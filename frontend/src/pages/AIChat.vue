@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, computed } from 'vue'
-import { 
-    Send, Trash2, Brain, Cloud, Info, Sparkles, 
-    PanelRightOpen, PanelRightClose, Download, Copy, Check,
-    Zap, Activity, AlertTriangle, Box, ChevronDown
+import {
+    ArrowUp, Trash2, Download, Copy, Check,
+    Sparkles, Activity, AlertTriangle, Box, ChevronDown, Zap
 } from 'lucide-vue-next'
 import { useAIChat } from '../composables/useAIChat'
-import { getAIStatus, getSystemStats, getWorkloads, type AIStatus, type SystemStats, type Workload } from '../lib/api'
+import { getAIStatus, getWorkloads, type AIStatus, type Workload } from '../lib/api'
 import ChatMessage from '../components/ai/ChatMessage.vue'
 
 const {
@@ -16,55 +15,73 @@ const {
     lastContextSummary,
     hasMessages,
     sendMessage,
-    clearChat
+    clearChat,
+    isStreamingMessage
 } = useAIChat()
 
 // State
 const aiStatus = ref<AIStatus | null>(null)
-const systemStats = ref<SystemStats | null>(null)
 const workloads = ref<Workload[]>([])
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
-const showContextPanel = ref(true)
 const selectedWorkload = ref<string>('all')
+const workloadDropdownOpen = ref(false)
 const copied = ref(false)
 
 // Computed
 const isAIReady = computed(() => aiStatus.value?.enabled && aiStatus.value?.status === 'ready')
 
+const selectedWorkloadLabel = computed(() => {
+    if (selectedWorkload.value === 'all') return 'All Workloads'
+    const w = workloads.value.find(w => w.id === selectedWorkload.value)
+    return w ? (w.cgroupPath.split('/').pop() || w.id) : 'All Workloads'
+})
+
 onMounted(async () => {
     try {
-        const [status, stats, wl] = await Promise.all([
+        const [status, wl] = await Promise.all([
             getAIStatus(),
-            getSystemStats(),
             getWorkloads()
         ])
         aiStatus.value = status
-        systemStats.value = stats
         workloads.value = wl
     } catch (e) {
         console.error('Failed to fetch initial data:', e)
     }
-    
-    // Refresh stats periodically
-    setInterval(async () => {
-        try {
-            systemStats.value = await getSystemStats()
-        } catch {}
-    }, 5000)
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement
+        if (!target.closest('.workload-dropdown')) {
+            workloadDropdownOpen.value = false
+        }
+    })
 })
+
+function selectWorkload(id: string) {
+    selectedWorkload.value = id
+    workloadDropdownOpen.value = false
+}
+
+// Scroll to bottom helper
+function scrollToBottom() {
+    if (messagesContainer.value) {
+        messagesContainer.value.scrollTo({
+            top: messagesContainer.value.scrollHeight,
+            behavior: 'smooth'
+        })
+    }
+}
 
 // Auto-scroll to bottom when new messages arrive
 watch(messages, async () => {
     await nextTick()
-    if (messagesContainer.value) {
-        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
+    scrollToBottom()
 }, { deep: true })
 
 async function handleSend() {
     if (!inputText.value.trim() || isLoading.value) return
-    
+
     const message = inputText.value
     inputText.value = ''
     await sendMessage(message)
@@ -78,10 +95,10 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 async function exportChat() {
-    const content = messages.value.map(m => 
+    const content = messages.value.map(m =>
         `[${m.role.toUpperCase()}] ${new Date(m.timestamp).toLocaleString()}\n${m.content}`
     ).join('\n\n---\n\n')
-    
+
     const blob = new Blob([content], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -126,69 +143,56 @@ const suggestionQuestions = [
                 <div class="header-left">
                     <div class="title-section">
                         <div class="ai-avatar">
-                            <Sparkles :size="20" />
+                            <Sparkles :size="18" />
                         </div>
                         <div>
                             <h1>EulerGuard AI</h1>
                             <div class="provider-info" v-if="aiStatus?.enabled">
-                                <component :is="aiStatus.isLocal ? Brain : Cloud" :size="12" />
                                 <span>{{ aiStatus.provider }}</span>
-                                <span class="status-indicator" :class="aiStatus.status">
+                                <span class="status-dot" :class="aiStatus.status"></span>
+                                <span class="status-text" :class="aiStatus.status">
                                     {{ aiStatus.status === 'ready' ? 'Online' : 'Offline' }}
                                 </span>
                             </div>
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="header-actions">
-                    <!-- Workload Filter -->
-                    <div class="workload-filter" v-if="workloads.length > 0">
-                        <Box :size="14" />
-                        <select v-model="selectedWorkload">
-                            <option value="all">All Workloads</option>
-                            <option v-for="w in workloads" :key="w.id" :value="w.id">
-                                {{ w.cgroupPath.split('/').pop() || w.id }}
-                            </option>
-                        </select>
-                        <ChevronDown :size="14" class="select-arrow" />
+                    <!-- Workload Filter Dropdown -->
+                    <div class="workload-dropdown" v-if="workloads.length > 0">
+                        <button class="dropdown-trigger" @click.stop="workloadDropdownOpen = !workloadDropdownOpen">
+                            <Box :size="14" />
+                            <span>{{ selectedWorkloadLabel }}</span>
+                            <ChevronDown :size="14" :class="{ rotated: workloadDropdownOpen }" />
+                        </button>
+                        <Transition name="dropdown">
+                            <div v-if="workloadDropdownOpen" class="dropdown-menu">
+                                <button class="dropdown-item" :class="{ active: selectedWorkload === 'all' }"
+                                    @click="selectWorkload('all')">
+                                    All Workloads
+                                </button>
+                                <button v-for="w in workloads" :key="w.id" class="dropdown-item"
+                                    :class="{ active: selectedWorkload === w.id }" @click="selectWorkload(w.id)">
+                                    {{ w.cgroupPath.split('/').pop() || w.id }}
+                                </button>
+                            </div>
+                        </Transition>
                     </div>
-                    
+
                     <!-- Action Buttons -->
-                    <button 
-                        v-if="hasMessages"
-                        class="header-btn" 
-                        @click="copyLastResponse"
-                        title="Copy last response"
-                    >
+                    <button v-if="hasMessages" class="header-btn" @click="copyLastResponse" title="Copy last response">
                         <component :is="copied ? Check : Copy" :size="16" />
                     </button>
-                    <button 
-                        v-if="hasMessages"
-                        class="header-btn" 
-                        @click="exportChat"
-                        title="Export conversation"
-                    >
+                    <button v-if="hasMessages" class="header-btn" @click="exportChat" title="Export conversation">
                         <Download :size="16" />
                     </button>
-                    <button 
-                        v-if="hasMessages" 
-                        class="header-btn danger"
-                        @click="clearChat"
-                        title="New conversation"
-                    >
+                    <button v-if="hasMessages" class="header-btn danger" @click="clearChat" title="New conversation">
                         <Trash2 :size="16" />
-                    </button>
-                    <button 
-                        class="header-btn"
-                        @click="showContextPanel = !showContextPanel"
-                        :title="showContextPanel ? 'Hide context panel' : 'Show context panel'"
-                    >
-                        <component :is="showContextPanel ? PanelRightClose : PanelRightOpen" :size="16" />
                     </button>
                 </div>
             </div>
-            
+
             <!-- Messages Container -->
             <div class="messages-wrapper">
                 <div ref="messagesContainer" class="messages-container">
@@ -201,50 +205,38 @@ const suggestionQuestions = [
                             <h2>How can I help you today?</h2>
                             <p>I have real-time access to your kernel telemetry via eBPF</p>
                         </div>
-                        
+
                         <!-- Quick Actions -->
                         <div class="quick-actions">
-                            <button 
-                                v-for="action in quickActions"
-                                :key="action.text"
-                                class="quick-action-btn"
-                                :class="action.color"
-                                @click="sendMessage(action.text)"
-                            >
+                            <button v-for="action in quickActions" :key="action.text" class="quick-action-btn"
+                                :class="action.color" @click="sendMessage(action.text)">
                                 <component :is="action.icon" :size="18" />
                                 <span>{{ action.text }}</span>
                             </button>
                         </div>
-                        
+
                         <!-- Suggestions Grid -->
                         <div class="suggestions-section">
                             <div class="suggestions-grid">
-                                <button 
-                                    v-for="q in suggestionQuestions" 
-                                    :key="q.text"
-                                    class="suggestion-btn"
-                                    @click="sendMessage(q.text)"
-                                >
+                                <button v-for="q in suggestionQuestions" :key="q.text" class="suggestion-btn"
+                                    @click="sendMessage(q.text)">
                                     <span>{{ q.text }}</span>
                                     <span class="suggestion-arrow">→</span>
                                 </button>
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Messages -->
                     <template v-if="hasMessages">
-                        <ChatMessage 
-                            v-for="(msg, i) in messages" 
-                            :key="i" 
-                            :message="msg"
-                        />
+                        <ChatMessage v-for="(msg, i) in messages" :key="i" :message="msg"
+                            :is-streaming="isStreamingMessage(i)" @streaming-update="scrollToBottom" />
                     </template>
-                    
+
                     <!-- Loading -->
                     <div v-if="isLoading" class="typing-indicator">
                         <div class="typing-avatar">
-                            <Brain :size="16" />
+                            <Sparkles :size="14" />
                         </div>
                         <div class="typing-dots">
                             <span></span>
@@ -252,7 +244,7 @@ const suggestionQuestions = [
                             <span></span>
                         </div>
                     </div>
-                    
+
                     <!-- Error -->
                     <div v-if="error" class="error-toast">
                         <AlertTriangle :size="16" />
@@ -261,101 +253,28 @@ const suggestionQuestions = [
                     </div>
                 </div>
             </div>
-            
+
             <!-- Input Area -->
             <div class="input-section">
                 <div class="input-container">
-                    <textarea
-                        v-model="inputText"
-                        placeholder="Ask about system security, performance, alerts..."
-                        rows="1"
-                        @keydown="handleKeydown"
-                        :disabled="isLoading || !isAIReady"
-                    />
-                    <button 
-                        class="send-btn" 
-                        @click="handleSend"
-                        :disabled="!inputText.trim() || isLoading || !isAIReady"
-                    >
-                        <Send :size="18" />
+                    <textarea v-model="inputText" placeholder="Message EulerGuard..." rows="1" @keydown="handleKeydown"
+                        :disabled="isLoading || !isAIReady" />
+                    <button class="send-btn" @click="handleSend"
+                        :disabled="!inputText.trim() || isLoading || !isAIReady">
+                        <ArrowUp :size="18" />
                     </button>
-                </div>
-                <div class="input-footer">
-                    <span class="context-note">
-                        <Zap :size="10" />
-                        Live eBPF context auto-injected
-                    </span>
-                    <span class="shortcut-hint">Enter to send</span>
                 </div>
             </div>
         </div>
-        
-        <!-- Context Sidebar -->
-        <Transition name="slide-panel">
-            <aside v-if="showContextPanel" class="context-panel">
-                <div class="panel-header">
-                    <h3>Live Telemetry</h3>
-                    <span class="live-badge">
-                        <span class="live-dot"></span>
-                        LIVE
-                    </span>
-                </div>
-                
-                <!-- System Stats -->
-                <div class="stats-grid" v-if="systemStats">
-                    <div class="stat-card">
-                        <span class="stat-value">{{ systemStats.eventsPerSec.toFixed(0) }}</span>
-                        <span class="stat-label">Events/sec</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-value">{{ systemStats.processCount }}</span>
-                        <span class="stat-label">Processes</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-value">{{ systemStats.workloadCount }}</span>
-                        <span class="stat-label">Workloads</span>
-                    </div>
-                    <div class="stat-card" :class="{ alert: systemStats.alertCount > 0 }">
-                        <span class="stat-value">{{ systemStats.alertCount }}</span>
-                        <span class="stat-label">Alerts</span>
-                    </div>
-                </div>
-                
-                <!-- Active Workloads -->
-                <div class="panel-section" v-if="workloads.length > 0">
-                    <h4>Active Workloads</h4>
-                    <div class="workload-list">
-                        <div 
-                            v-for="w in workloads.slice(0, 5)" 
-                            :key="w.id" 
-                            class="workload-item"
-                            :class="{ selected: selectedWorkload === w.id }"
-                            @click="selectedWorkload = w.id"
-                        >
-                            <Box :size="14" />
-                            <span class="workload-name">{{ w.cgroupPath.split('/').pop() || 'unknown' }}</span>
-                            <span class="workload-events">{{ w.execCount + w.fileCount + w.connectCount }}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Context Summary -->
-                <div class="panel-section" v-if="lastContextSummary">
-                    <h4>AI Context</h4>
-                    <div class="context-summary">
-                        {{ lastContextSummary }}
-                    </div>
-                </div>
-            </aside>
-        </Transition>
     </div>
 </template>
 
 <style scoped>
 .ai-chat-page {
     display: flex;
-    height: calc(100vh - var(--topbar-height) - 48px);
-    gap: 0;
+    flex-direction: column;
+    height: calc(100vh - var(--topbar-height) - var(--footer-height) - 48px);
+    margin: -24px;
 }
 
 /* Main Chat Area */
@@ -364,42 +283,46 @@ const suggestionQuestions = [
     display: flex;
     flex-direction: column;
     min-width: 0;
+    min-height: 0;
+    width: 100%;
 }
 
 .chat-header {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 24px;
-    border-bottom: 1px solid var(--border-subtle);
+    padding: 12px 24px;
     background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
 }
 
 .header-left {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
 }
 
 .title-section {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 .ai-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, var(--accent-primary), #a855f7);
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: var(--text-secondary);
 }
 
 .title-section h1 {
-    font-size: 18px;
+    font-size: 15px;
     font-weight: 600;
     color: var(--text-primary);
     margin: 0;
@@ -409,73 +332,133 @@ const suggestionQuestions = [
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-muted);
-    margin-top: 2px;
+    margin-top: 1px;
 }
 
-.status-indicator {
-    padding: 2px 6px;
-    border-radius: var(--radius-full);
-    font-size: 10px;
-    font-weight: 500;
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
 }
 
-.status-indicator.ready {
-    background: rgba(34, 197, 94, 0.15);
+.status-dot.ready {
+    background: var(--status-safe);
+}
+
+.status-dot.unavailable {
+    background: var(--status-critical);
+}
+
+.status-text {
+    font-size: 11px;
+}
+
+.status-text.ready {
     color: var(--status-safe);
 }
 
-.status-indicator.unavailable {
-    background: rgba(239, 68, 68, 0.15);
+.status-text.unavailable {
     color: var(--status-critical);
 }
 
 .header-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
-.workload-filter {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    font-size: 12px;
-    color: var(--text-secondary);
+/* Custom Dropdown */
+.workload-dropdown {
     position: relative;
 }
 
-.workload-filter select {
-    background: none;
+.dropdown-trigger {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 8px;
+    background: transparent;
     border: none;
-    color: inherit;
-    font-size: inherit;
-    padding-right: 16px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    color: var(--text-muted);
     cursor: pointer;
-    appearance: none;
+    transition: all 0.15s;
 }
 
-.select-arrow {
+.dropdown-trigger:hover {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+}
+
+.dropdown-trigger svg:last-child {
+    transition: transform 0.15s;
+}
+
+.dropdown-trigger svg.rotated {
+    transform: rotate(180deg);
+}
+
+.dropdown-menu {
     position: absolute;
-    right: 8px;
-    pointer-events: none;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 160px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 100;
+    overflow: hidden;
+}
+
+.dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+.dropdown-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.dropdown-item.active {
+    background: var(--accent-glow);
+    color: var(--accent-primary);
+}
+
+.dropdown-enter-active,
+.dropdown-leave-active {
+    transition: all 0.15s ease;
+}
+
+.dropdown-enter-from,
+.dropdown-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
 }
 
 .header-btn {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
     cursor: pointer;
     transition: all 0.15s;
 }
@@ -487,14 +470,13 @@ const suggestionQuestions = [
 
 .header-btn.danger:hover {
     color: var(--status-critical);
-    border-color: var(--status-critical);
 }
 
 /* Messages */
 .messages-wrapper {
     flex: 1;
+    min-height: 0;
     overflow: hidden;
-    background: var(--bg-void);
 }
 
 .messages-container {
@@ -503,7 +485,13 @@ const suggestionQuestions = [
     padding: 24px;
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 16px;
+}
+
+.messages-container> :not(.empty-state) {
+    max-width: 800px;
+    width: 100%;
+    margin: 0 auto;
 }
 
 /* Empty State */
@@ -515,41 +503,37 @@ const suggestionQuestions = [
     justify-content: center;
     max-width: 700px;
     margin: 0 auto;
-    padding: 40px 20px;
+    padding: 40px 24px;
 }
 
 .welcome-section {
     text-align: center;
-    margin-bottom: 32px;
+    margin-bottom: 28px;
 }
 
 .welcome-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: 16px;
-    background: linear-gradient(135deg, var(--accent-primary), #a855f7);
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-lg);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
-    margin: 0 auto 16px;
-    animation: float 3s ease-in-out infinite;
-}
-
-@keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
+    color: var(--text-secondary);
+    margin: 0 auto 14px;
 }
 
 .welcome-section h2 {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 600;
     color: var(--text-primary);
-    margin: 0 0 8px;
+    margin: 0 0 6px;
 }
 
 .welcome-section p {
     color: var(--text-muted);
+    font-size: 13px;
     margin: 0;
 }
 
@@ -557,36 +541,52 @@ const suggestionQuestions = [
 .quick-actions {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    gap: 10px;
     width: 100%;
-    max-width: 500px;
+    max-width: 520px;
     margin-bottom: 24px;
 }
 
 .quick-action-btn {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 14px 16px;
+    gap: 8px;
+    padding: 10px 14px;
     background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s;
 }
 
 .quick-action-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    background: var(--bg-hover);
+    border-color: var(--border-default);
+    color: var(--text-primary);
 }
 
-.quick-action-btn.green:hover { border-color: var(--status-safe); color: var(--status-safe); }
-.quick-action-btn.orange:hover { border-color: var(--status-warning); color: var(--status-warning); }
-.quick-action-btn.red:hover { border-color: var(--status-critical); color: var(--status-critical); }
-.quick-action-btn.blue:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+.quick-action-btn.green:hover {
+    border-color: var(--status-safe);
+    color: var(--status-safe);
+}
+
+.quick-action-btn.orange:hover {
+    border-color: var(--status-warning);
+    color: var(--status-warning);
+}
+
+.quick-action-btn.red:hover {
+    border-color: var(--status-critical);
+    color: var(--status-critical);
+}
+
+.quick-action-btn.blue:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
 
 /* Suggestions */
 .suggestions-section {
@@ -597,34 +597,35 @@ const suggestionQuestions = [
 .suggestions-grid {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .suggestion-btn {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    padding: 10px 14px;
     background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 12px;
     text-align: left;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .suggestion-btn:hover {
-    background: var(--bg-elevated);
+    background: var(--bg-hover);
     color: var(--text-primary);
-    border-color: var(--accent-primary);
+    border-color: var(--border-default);
 }
 
 .suggestion-arrow {
     opacity: 0;
     transform: translateX(-4px);
     transition: all 0.15s;
+    color: var(--text-muted);
 }
 
 .suggestion-btn:hover .suggestion-arrow {
@@ -636,44 +637,61 @@ const suggestionQuestions = [
 .typing-indicator {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
 }
 
 .typing-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, var(--accent-primary), #a855f7);
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: var(--text-muted);
     flex-shrink: 0;
 }
 
 .typing-dots {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 16px;
+    gap: 3px;
+    padding: 12px 14px;
     background: var(--bg-surface);
-    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
 }
 
 .typing-dots span {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--text-muted);
     animation: typing 1.4s infinite;
 }
 
-.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+.typing-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
 
 @keyframes typing {
-    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-    30% { transform: translateY(-4px); opacity: 1; }
+
+    0%,
+    60%,
+    100% {
+        transform: translateY(0);
+        opacity: 0.4;
+    }
+
+    30% {
+        transform: translateY(-3px);
+        opacity: 1;
+    }
 }
 
 /* Error Toast */
@@ -681,12 +699,12 @@ const suggestionQuestions = [
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 16px;
-    background: rgba(239, 68, 68, 0.1);
+    padding: 10px 14px;
+    background: var(--status-critical-dim);
     border: 1px solid rgba(239, 68, 68, 0.2);
     border-radius: var(--radius-md);
     color: var(--status-critical);
-    font-size: 13px;
+    font-size: 12px;
 }
 
 .error-toast button {
@@ -694,32 +712,37 @@ const suggestionQuestions = [
     background: none;
     border: none;
     color: inherit;
-    font-size: 18px;
+    font-size: 16px;
     cursor: pointer;
     line-height: 1;
+    opacity: 0.7;
+}
+
+.error-toast button:hover {
+    opacity: 1;
 }
 
 /* Input Section */
 .input-section {
-    padding: 16px 24px 20px;
-    background: var(--bg-surface);
-    border-top: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+    padding: 12px 24px 12px;
 }
 
 .input-container {
     display: flex;
-    gap: 12px;
+    gap: 10px;
     align-items: flex-end;
-    background: var(--bg-elevated);
+    max-width: 800px;
+    margin: 0 auto;
+    background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-xl);
-    padding: 8px 8px 8px 16px;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    border-radius: var(--radius-lg);
+    padding: 10px 10px 10px 16px;
+    transition: border-color 0.15s;
 }
 
 .input-container:focus-within {
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--border-default);
 }
 
 .input-container textarea {
@@ -729,10 +752,10 @@ const suggestionQuestions = [
     color: var(--text-primary);
     font-size: 14px;
     resize: none;
-    min-height: 24px;
+    min-height: 22px;
     max-height: 120px;
     line-height: 1.5;
-    padding: 8px 0;
+    padding: 6px 0;
 }
 
 .input-container textarea:focus {
@@ -744,12 +767,12 @@ const suggestionQuestions = [
 }
 
 .send-btn {
-    width: 40px;
-    height: 40px;
-    background: linear-gradient(135deg, var(--accent-primary), #a855f7);
+    width: 32px;
+    height: 32px;
+    background: var(--text-primary);
     border: none;
-    border-radius: var(--radius-lg);
-    color: white;
+    border-radius: var(--radius-md);
+    color: var(--bg-void);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -759,187 +782,12 @@ const suggestionQuestions = [
 }
 
 .send-btn:hover:not(:disabled) {
-    transform: scale(1.05);
+    opacity: 0.9;
 }
 
 .send-btn:disabled {
-    opacity: 0.5;
+    background: var(--text-muted);
+    opacity: 0.4;
     cursor: not-allowed;
 }
-
-.input-footer {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 8px;
-    font-size: 11px;
-    color: var(--text-muted);
-}
-
-.context-note {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--accent-primary);
-}
-
-/* Context Panel */
-.context-panel {
-    width: 280px;
-    background: var(--bg-surface);
-    border-left: 1px solid var(--border-subtle);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px;
-    border-bottom: 1px solid var(--border-subtle);
-}
-
-.panel-header h3 {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0;
-}
-
-.live-badge {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--status-safe);
-    padding: 2px 6px;
-    background: rgba(34, 197, 94, 0.15);
-    border-radius: var(--radius-full);
-}
-
-.live-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--status-safe);
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    padding: 16px;
-}
-
-.stat-card {
-    padding: 12px;
-    background: var(--bg-elevated);
-    border-radius: var(--radius-md);
-    text-align: center;
-}
-
-.stat-card.alert {
-    background: rgba(239, 68, 68, 0.1);
-}
-
-.stat-value {
-    display: block;
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.stat-card.alert .stat-value {
-    color: var(--status-critical);
-}
-
-.stat-label {
-    font-size: 11px;
-    color: var(--text-muted);
-}
-
-.panel-section {
-    padding: 16px;
-    border-top: 1px solid var(--border-subtle);
-}
-
-.panel-section h4 {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-muted);
-    margin: 0 0 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.workload-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.workload-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    border-radius: var(--radius-sm);
-    font-size: 12px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.15s;
-}
-
-.workload-item:hover {
-    background: var(--bg-hover);
-}
-
-.workload-item.selected {
-    background: var(--accent-glow);
-    color: var(--accent-primary);
-}
-
-.workload-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.workload-events {
-    font-size: 11px;
-    padding: 2px 6px;
-    background: var(--bg-elevated);
-    border-radius: var(--radius-full);
-}
-
-.context-summary {
-    font-size: 12px;
-    color: var(--text-secondary);
-    line-height: 1.5;
-    padding: 10px;
-    background: var(--bg-elevated);
-    border-radius: var(--radius-md);
-}
-
-/* Panel Transition */
-.slide-panel-enter-active,
-.slide-panel-leave-active {
-    transition: all 0.3s ease;
-}
-
-.slide-panel-enter-from,
-.slide-panel-leave-to {
-    width: 0;
-    opacity: 0;
-}
 </style>
-

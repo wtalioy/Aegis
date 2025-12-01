@@ -19,14 +19,15 @@ body {
   background-color: var(--bg-void);
   color: var(--text-primary);
   line-height: 1.5;
-  min-height: 100vh;
-  overflow: auto;
+  height: 100vh;
+  overflow: hidden;
 }
 
 #app {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 a {

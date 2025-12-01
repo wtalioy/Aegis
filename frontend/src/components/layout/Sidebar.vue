@@ -91,15 +91,11 @@ const isActive = (path: string) => route.path === path
 <style scoped>
 .sidebar {
   width: var(--sidebar-width);
-  height: 100vh;
   background: var(--bg-surface);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  position: sticky;
-  top: 0;
-  align-self: flex-start;
 }
 
 .sidebar-header {

@@ -358,6 +358,73 @@ export async function sendChatMessage(
     return resp.json()
 }
 
+export interface ChatStreamToken {
+    content: string
+    done: boolean
+    sessionId?: string
+    error?: string
+}
+
+export async function sendChatMessageStream(
+    message: string,
+    sessionId: string,
+    onToken: (token: ChatStreamToken) => void,
+    onError: (error: Error) => void,
+    onComplete: () => void
+): Promise<void> {
+    try {
+        const resp = await fetch('/api/ai/chat/stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message, sessionId })
+        })
+
+        if (!resp.ok) {
+            const error: AIError = await resp.json()
+            throw new Error(error.error || 'Chat stream failed')
+        }
+
+        const reader = resp.body?.getReader()
+        if (!reader) {
+            throw new Error('No response body')
+        }
+
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+            const { done, value } = await reader.read()
+
+            if (done) {
+                onComplete()
+                break
+            }
+
+            buffer += decoder.decode(value, { stream: true })
+
+            const lines = buffer.split('\n')
+            buffer = lines.pop() || ''
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6)) as ChatStreamToken
+                        if (data.error) {
+                            onError(new Error(data.error))
+                            return
+                        }
+                        onToken(data)
+                    } catch {
+                        // Skip malformed lines
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        onError(e instanceof Error ? e : new Error('Unknown error'))
+    }
+}
+
 export async function getChatHistory(sessionId: string): Promise<ChatMessage[]> {
     const resp = await fetch(`/api/ai/chat/history?sessionId=${encodeURIComponent(sessionId)}`)
     if (!resp.ok) {

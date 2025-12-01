@@ -263,7 +263,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  max-width: 1400px;
 }
 
 /* Header */

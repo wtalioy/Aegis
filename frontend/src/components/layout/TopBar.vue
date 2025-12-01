@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Brain, Cloud, Sparkles } from 'lucide-vue-next'
+import { Zap } from 'lucide-vue-next'
 import { getAIStatus, type AIStatus } from '../../lib/api'
 import DiagnosisModal from '../ai/DiagnosisModal.vue'
 
@@ -43,29 +43,17 @@ onMounted(async () => {
     </div>
 
     <div class="topbar-right">
-      <!-- AI Status & Quick Diagnose -->
-      <div v-if="aiStatus?.enabled" class="ai-section">
-        <!-- AI Provider Status Badge -->
-        <div class="ai-status" :class="aiStatus.status">
-          <component 
-            :is="aiStatus.isLocal ? Brain : Cloud" 
-            :size="14" 
-            class="ai-icon"
-          />
-          <span class="ai-label">{{ aiStatus.isLocal ? 'Local AI' : 'Cloud AI' }}</span>
-        </div>
-        
-        <!-- Quick Diagnose Button -->
-        <button 
-          class="diagnose-btn" 
-          @click="showDiagnosisModal = true"
-          :disabled="aiStatus.status !== 'ready'"
-          title="Quick one-click system diagnosis"
-        >
-          <Sparkles :size="16" />
-          <span>Quick Diagnose</span>
-        </button>
-      </div>
+      <!-- Quick Diagnose Button -->
+      <button 
+        v-if="aiStatus?.enabled"
+        class="diagnose-btn" 
+        @click="showDiagnosisModal = true"
+        :disabled="aiStatus.status !== 'ready'"
+        title="Quick one-click system diagnosis"
+      >
+        <Zap :size="15" />
+        <span>Quick Diagnose</span>
+      </button>
     </div>
   </header>
   
@@ -153,67 +141,30 @@ onMounted(async () => {
   color: var(--status-safe);
 }
 
-/* AI Section Styles */
-.ai-section {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.ai-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  background: var(--bg-elevated);
-  border-radius: var(--radius-full);
-  font-size: 12px;
-}
-
-.ai-status.ready .ai-icon {
-  color: var(--status-safe);
-}
-
-.ai-status.unavailable .ai-icon {
-  color: var(--status-warning);
-}
-
-.ai-label {
-  color: var(--text-secondary);
-}
-
 .diagnose-btn {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: linear-gradient(135deg, var(--accent-primary), #a855f7);
-  border: none;
-  border-radius: var(--radius-sm);
-  color: white;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .diagnose-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-default);
 }
 
 .diagnose-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.diagnose-btn svg {
-  animation: sparkle 2s ease-in-out infinite;
-}
-
-@keyframes sparkle {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
 }
 
 @keyframes pulse-ring {

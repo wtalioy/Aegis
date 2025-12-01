@@ -110,6 +110,20 @@ func (a *App) Chat(ctx context.Context, sessionID, message string) (*ai.ChatResp
 	return a.aiService.Chat(ctx, sessionID, message, a.stats, a.workloadRegistry, procTreeSize)
 }
 
+
+func (a *App) ChatStream(ctx context.Context, sessionID, message string) (<-chan ai.ChatStreamToken, error) {
+	if a.aiService == nil || !a.aiService.IsEnabled() {
+		return nil, nil
+	}
+
+	procTreeSize := 0
+	if a.processTree != nil {
+		procTreeSize = a.processTree.Size()
+	}
+
+	return a.aiService.ChatStream(ctx, sessionID, message, a.stats, a.workloadRegistry, procTreeSize)
+}
+
 func (a *App) GetChatHistory(sessionID string) []ai.Message {
 	if a.aiService == nil {
 		return nil

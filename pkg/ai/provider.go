@@ -13,11 +13,27 @@ type Provider interface {
 	// multi-turn conversations mode
 	MultiChat(ctx context.Context, messages []Message) (string, error)
 
+	// streaming multi-turn conversations mode
+	MultiChatStream(ctx context.Context, messages []Message) (<-chan StreamToken, error)
+
 	CheckHealth(ctx context.Context) error
 }
 
+type StreamToken struct {
+	Content string
+	Done    bool
+	Error   error
+}
+
+type ChatStreamToken struct {
+	Content   string `json:"content"`
+	Done      bool   `json:"done"`
+	SessionID string `json:"sessionId,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
 type Message struct {
-	Role      string `json:"role"`      // "user", "assistant", "system"
+	Role      string `json:"role"` // "user", "assistant", "system"
 	Content   string `json:"content"`
 	Timestamp int64  `json:"timestamp"`
 }
@@ -48,4 +64,3 @@ type StatusDTO struct {
 	IsLocal  bool   `json:"isLocal"`
 	Status   string `json:"status"` // "ready", "unavailable", "disabled"
 }
-

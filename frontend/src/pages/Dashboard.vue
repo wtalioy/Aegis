@@ -284,7 +284,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-width: 1400px;
 }
 
 /* Main Grid */

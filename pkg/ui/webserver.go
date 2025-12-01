@@ -434,6 +434,78 @@ func registerAPI(mux *http.ServeMux, app *App) {
 		json.NewEncoder(w).Encode(result)
 	})
 
+	mux.HandleFunc("/api/ai/chat/stream", func(w http.ResponseWriter, r *http.Request) {
+		setCORS(w)
+
+		if r.Method == "OPTIONS" {
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			return
+		}
+
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			Message   string `json:"message"`
+			SessionID string `json:"sessionId"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.Message == "" {
+			http.Error(w, "Message is required", http.StatusBadRequest)
+			return
+		}
+
+		if req.SessionID == "" {
+			req.SessionID = generateSessionID()
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+		defer cancel()
+
+		tokenChan, err := app.ChatStream(ctx, req.SessionID, req.Message)
+		if err != nil {
+			data, _ := json.Marshal(map[string]string{"error": err.Error()})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+			return
+		}
+
+		if tokenChan == nil {
+			data, _ := json.Marshal(map[string]string{"error": "AI service not available"})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+			return
+		}
+
+		for token := range tokenChan {
+			data, err := json.Marshal(token)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	})
+
 	mux.HandleFunc("/api/ai/chat/history", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
 		w.Header().Set("Content-Type", "application/json")

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { X, Brain, Cloud, Loader2, AlertTriangle } from 'lucide-vue-next'
+import { X, Sparkles, Loader2, AlertTriangle } from 'lucide-vue-next'
 import { diagnoseSystem, type DiagnosisResult } from '../../lib/api'
 
 const props = defineProps<{
@@ -79,8 +79,8 @@ watch(() => props.visible, (visible) => {
             <div class="modal-container">
                 <div class="modal-header">
                     <div class="header-title">
-                        <Brain :size="20" class="header-icon" />
-                        <span>AI System Diagnosis</span>
+                        <Sparkles :size="18" class="header-icon" />
+                        <span>System Diagnosis</span>
                     </div>
                     <button class="close-btn" @click="close">
                         <X :size="18" />
@@ -106,8 +106,7 @@ watch(() => props.visible, (visible) => {
                     <!-- Result State -->
                     <div v-else-if="result" class="result-state">
                         <div class="result-meta">
-                            <span class="provider-badge" :class="{ local: result.isLocal }">
-                                <component :is="result.isLocal ? Brain : Cloud" :size="14" />
+                            <span class="provider-badge">
                                 {{ result.provider }}
                             </span>
                             <span class="duration">{{ result.durationMs }}ms</span>
@@ -171,13 +170,14 @@ watch(() => props.visible, (visible) => {
 .header-title {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .header-icon {
-    color: var(--accent-primary);
+    color: var(--text-secondary);
 }
 
 .close-btn {
@@ -223,11 +223,18 @@ watch(() => props.visible, (visible) => {
 
 .retry-btn {
     padding: 8px 16px;
-    background: var(--accent-primary);
-    border: none;
-    border-radius: var(--radius-sm);
-    color: white;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 13px;
     cursor: pointer;
+    transition: all 0.15s;
+}
+
+.retry-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-default);
 }
 
 .result-meta {
@@ -244,13 +251,10 @@ watch(() => props.visible, (visible) => {
     gap: 6px;
     padding: 4px 10px;
     background: var(--bg-elevated);
-    border-radius: var(--radius-full);
-    font-size: 12px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    font-size: 11px;
     color: var(--text-secondary);
-}
-
-.provider-badge.local {
-    color: var(--status-safe);
 }
 
 .duration,
@@ -288,7 +292,8 @@ watch(() => props.visible, (visible) => {
 }
 
 .analysis-content :deep(strong) {
-    color: var(--accent-primary);
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
 .followup-section {
@@ -304,28 +309,35 @@ watch(() => props.visible, (visible) => {
     padding: 10px 14px;
     background: var(--bg-elevated);
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: 13px;
 }
 
 .followup-section input:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--border-default);
 }
 
 .followup-section button {
-    padding: 10px 20px;
-    background: var(--accent-primary);
+    padding: 10px 18px;
+    background: var(--text-primary);
     border: none;
-    border-radius: var(--radius-sm);
-    color: white;
+    border-radius: var(--radius-md);
+    color: var(--bg-void);
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.followup-section button:hover:not(:disabled) {
+    opacity: 0.9;
 }
 
 .followup-section button:disabled {
-    opacity: 0.5;
+    background: var(--text-muted);
+    opacity: 0.4;
     cursor: not-allowed;
 }
 

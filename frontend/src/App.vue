@@ -20,8 +20,9 @@ import StatusFooter from './components/layout/StatusFooter.vue'
 <style scoped>
 .app-layout {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
   background: var(--bg-void);
+  overflow: hidden;
 }
 
 .main-wrapper {
@@ -29,11 +30,13 @@ import StatusFooter from './components/layout/StatusFooter.vue'
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .main-content {
   flex: 1;
   padding: 24px;
+  overflow: auto;
 }
 </style>

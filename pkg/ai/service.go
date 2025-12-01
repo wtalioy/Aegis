@@ -159,6 +159,68 @@ func (s *Service) Chat(
 	}, nil
 }
 
+func (s *Service) ChatStream(
+	ctx context.Context,
+	sessionID string,
+	userMessage string,
+	stats types.StatsProvider,
+	workloadReg *workload.Registry,
+	procTreeSize int,
+) (<-chan ChatStreamToken, error) {
+	if !s.enabled {
+		return nil, fmt.Errorf("AI chat is not enabled")
+	}
+
+	s.conversations.GetOrCreate(sessionID)
+	history := s.conversations.GetMessages(sessionID)
+
+	snapshot := BuildSnapshot(stats, workloadReg, procTreeSize)
+	messages := BuildChatMessages(history, snapshot, userMessage)
+
+	tokenChan, err := s.provider.MultiChatStream(ctx, messages)
+	if err != nil {
+		return nil, fmt.Errorf("AI stream failed: %w", err)
+	}
+
+	outputChan := make(chan ChatStreamToken, 100)
+
+	go func() {
+		defer close(outputChan)
+
+		var fullResponse string
+
+		for token := range tokenChan {
+			if token.Error != nil {
+				outputChan <- ChatStreamToken{Error: token.Error.Error()}
+				return
+			}
+
+			fullResponse += token.Content
+
+			outputChan <- ChatStreamToken{
+				Content:   token.Content,
+				Done:      token.Done,
+				SessionID: sessionID,
+			}
+
+			if token.Done {
+				s.conversations.AddMessage(sessionID, Message{
+					Role:      "user",
+					Content:   userMessage,
+					Timestamp: time.Now().UnixMilli(),
+				})
+				s.conversations.AddMessage(sessionID, Message{
+					Role:      "assistant",
+					Content:   fullResponse,
+					Timestamp: time.Now().UnixMilli(),
+				})
+			}
+		}
+	}()
+
+	return outputChan, nil
+}
+
 func (s *Service) GetChatHistory(sessionID string) []Message {
 	if s.conversations == nil {
 		return nil
