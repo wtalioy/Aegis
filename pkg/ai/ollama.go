@@ -5,10 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
-	"os"
-	"os/exec"
 	"time"
 
 	"eulerguard/pkg/config"
@@ -123,14 +120,6 @@ func (o *OllamaProvider) CheckHealth(ctx context.Context) error {
 	req, _ := http.NewRequestWithContext(ctx, "GET", o.endpoint+"/api/tags", nil)
 	resp, err := o.client.Do(req)
 	if err != nil {
-		if bootstrapErr := o.ensureRuntime(ctx); bootstrapErr == nil {
-			req, _ = http.NewRequestWithContext(ctx, "GET", o.endpoint+"/api/tags", nil)
-			resp, err = o.client.Do(req)
-		} else {
-			log.Printf("[AI] Failed to bootstrap Ollama runtime: %v", bootstrapErr)
-		}
-	}
-	if err != nil {
 		return fmt.Errorf("ollama not reachable: %w", err)
 	}
 	defer resp.Body.Close()
@@ -138,13 +127,4 @@ func (o *OllamaProvider) CheckHealth(ctx context.Context) error {
 		return fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
 	return nil
-}
-
-func (o *OllamaProvider) ensureRuntime(ctx context.Context) error {
-	scriptPath := "scripts/start_ollama.sh"
-	log.Printf("[AI] Attempting to start Ollama via %s", scriptPath)
-	cmd := exec.CommandContext(ctx, scriptPath, o.model, o.endpoint)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
