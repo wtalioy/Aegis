@@ -65,11 +65,20 @@ ensure_model() {
 
   if ollama show "$model" >/dev/null 2>&1; then
     echo "[ollama] Model '$model' already present."
-    return 0
+  else
+    echo "[ollama] Pulling model '$model'..."
+    ollama pull "$model"
   fi
 
-  echo "[ollama] Pulling model '$model'..."
-  ollama pull "$model"
+  echo "[ollama] Pre-loading model '$model' into memory..."
+  if curl -fsS -X POST "$OLLAMA_HOST/api/generate" \
+    -H "Content-Type: application/json" \
+    -d "{\"model\":\"$model\",\"prompt\":\"\",\"stream\":false,\"options\":{\"num_predict\":1}}" \
+    >/dev/null 2>&1; then
+    echo "[ollama] Model '$model' pre-loaded successfully."
+  else
+    echo "[ollama] Warning: Failed to pre-load model '$model', it will be loaded on first use."
+  fi
 }
 
 start_ollama
