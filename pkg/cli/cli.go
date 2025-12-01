@@ -12,6 +12,7 @@ import (
 	"eulerguard/pkg/metrics"
 	"eulerguard/pkg/output"
 	"eulerguard/pkg/profiler"
+	"eulerguard/pkg/rules"
 	"eulerguard/pkg/tracer"
 )
 
@@ -24,7 +25,7 @@ type CLI struct {
 
 func RunCLI(opts config.Options, ctx context.Context) error {
 	cli := &CLI{
-		Opts: opts,
+		Opts:     opts,
 		Handlers: events.NewHandlerChain(),
 	}
 
@@ -42,7 +43,7 @@ func RunCLI(opts config.Options, ctx context.Context) error {
 	if cli.Opts.LearnMode {
 		cli.Profiler = profiler.NewProfiler()
 		cli.Handlers.Add(cli.Profiler)
-		log.Printf("Learning mode enabled for %v, output: %s", cli.Opts.LearnDuration, cli.Opts.LearnOutputPath)
+		log.Printf("Learning mode enabled for %v, rules will be merged into: %s", cli.Opts.LearnDuration, cli.Opts.RulesPath)
 	}
 
 	meter := metrics.NewRateMeter(2 * time.Second)
@@ -88,10 +89,21 @@ func (cli *CLI) runLearnModeTimer(ctx context.Context, cancel context.CancelFunc
 		log.Printf("Learning complete. Collected %d behavior profiles.", cli.Profiler.Count())
 		cli.Profiler.Stop()
 
-		if err := cli.Profiler.SaveYAML(cli.Opts.LearnOutputPath); err != nil {
-			log.Printf("Error saving whitelist: %v", err)
+		generatedRules := cli.Profiler.GenerateRules()
+		if len(generatedRules) == 0 {
+			log.Printf("No rules generated from learning mode")
 		} else {
-			log.Printf("Whitelist saved to %s", cli.Opts.LearnOutputPath)
+			existingRules, err := rules.LoadRules(cli.Opts.RulesPath)
+			if err != nil {
+				existingRules = []rules.Rule{}
+			}
+
+			mergedRules := rules.MergeRules(existingRules, generatedRules)
+			if err := rules.SaveRules(cli.Opts.RulesPath, mergedRules); err != nil {
+				log.Printf("Error saving rules: %v", err)
+			} else {
+				log.Printf("Merged %d new rules into %s (total: %d rules)", len(generatedRules), cli.Opts.RulesPath, len(mergedRules))
+			}
 		}
 		cancel()
 	case <-ctx.Done():

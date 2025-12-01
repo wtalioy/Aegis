@@ -45,9 +45,6 @@ learn_mode: false
 # Format: 30s, 5m, 1h, etc.
 learn_duration: 5m
 
-# Output path for generated whitelist rules (default: whitelist_rules.yaml)
-learn_output_path: ./whitelist_rules.yaml
-
 # ============================================
 # AI Intelligent Diagnosis Configuration (Web UI specific)
 # ============================================
