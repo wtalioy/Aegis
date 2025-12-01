@@ -13,7 +13,7 @@ const (
 	startScriptName       = "scripts/start_ollama.sh"
 )
 
-var ollamaStartedByUs bool
+var ollamaUsed bool
 
 func EnsureOllamaRuntime(ctx context.Context, model, endpoint string) error {
 	if model == "" {
@@ -23,9 +23,7 @@ func EnsureOllamaRuntime(ctx context.Context, model, endpoint string) error {
 		endpoint = defaultOllamaEndpoint
 	}
 
-	if exec.Command("pgrep", "-x", "ollama").Run() != nil {
-		ollamaStartedByUs = true
-	}
+	ollamaUsed = true
 
 	log.Printf("[AI] Preparing Ollama runtime (%s @ %s)...", model, endpoint)
 
@@ -36,7 +34,7 @@ func EnsureOllamaRuntime(ctx context.Context, model, endpoint string) error {
 }
 
 func StopOllamaRuntime() {
-	if !ollamaStartedByUs {
+	if !ollamaUsed {
 		return
 	}
 	log.Println("[AI] Stopping Ollama...")
