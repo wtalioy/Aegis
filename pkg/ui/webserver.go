@@ -47,6 +47,7 @@ func RunWebServer(opts config.Options, port int, assets embed.FS) error {
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 		<-sigChan
 		log.Println("Shutting down...")
+		ai.StopOllamaRuntime()
 		server.Shutdown(context.Background())
 	}()
 
@@ -319,7 +320,6 @@ func registerAPI(mux *http.ServeMux, app *App) {
 			}
 		}
 	})
-
 
 	mux.HandleFunc("/api/ai/status", func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)

@@ -13,9 +13,8 @@ const (
 	startScriptName       = "scripts/start_ollama.sh"
 )
 
-// EnsureOllamaRuntime makes sure the local Ollama daemon is running and the
-// requested model is pulled before the web UI comes up. It is safe to call
-// multiple times—the helper script is idempotent.
+var ollamaStartedByUs bool
+
 func EnsureOllamaRuntime(ctx context.Context, model, endpoint string) error {
 	if model == "" {
 		model = defaultOllamaModel
@@ -24,10 +23,22 @@ func EnsureOllamaRuntime(ctx context.Context, model, endpoint string) error {
 		endpoint = defaultOllamaEndpoint
 	}
 
+	if exec.Command("pgrep", "-x", "ollama").Run() != nil {
+		ollamaStartedByUs = true
+	}
+
 	log.Printf("[AI] Preparing Ollama runtime (%s @ %s)...", model, endpoint)
 
 	cmd := exec.CommandContext(ctx, startScriptName, model, endpoint)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func StopOllamaRuntime() {
+	if !ollamaStartedByUs {
+		return
+	}
+	log.Println("[AI] Stopping Ollama...")
+	_ = exec.Command("pkill", "-x", "ollama").Run()
 }
