@@ -82,7 +82,6 @@ struct path_scratch {
     char path_buf[PATH_MAX_LEN];
     char filename[NAME_MAX];
     char parent[NAME_MAX];
-    char grandparent[NAME_MAX];
 };
 
 struct {
@@ -116,30 +115,14 @@ static __always_inline u8 check_file_action(struct dentry* dentry, char* out_pat
     bpf_probe_read_kernel_str(s->filename, NAME_MAX, d_name.name);
 
     struct dentry* parent_dentry = BPF_CORE_READ(dentry, d_parent);
-    struct dentry* grandparent_dentry = NULL;
     if (parent_dentry && parent_dentry != dentry) {
         struct qstr pd_name = BPF_CORE_READ(parent_dentry, d_name);
         if (pd_name.name && pd_name.len > 0 && pd_name.len < NAME_MAX) {
             bpf_probe_read_kernel_str(s->parent, NAME_MAX, pd_name.name);
         }
-        grandparent_dentry = BPF_CORE_READ(parent_dentry, d_parent);
-        if (grandparent_dentry && grandparent_dentry != parent_dentry) {
-            struct qstr gpd_name = BPF_CORE_READ(grandparent_dentry, d_name);
-            if (gpd_name.name && gpd_name.len > 0 && gpd_name.len < NAME_MAX) {
-                bpf_probe_read_kernel_str(s->grandparent, NAME_MAX, gpd_name.name);
-            }
-        }
     }
 
     int pos = 0;
-    if (s->grandparent[0]) {
-        for (int i = 0; i < NAME_MAX - 1 && s->grandparent[i] && pos < PATH_MAX_LEN - 2; i++) {
-            s->path_buf[pos++] = s->grandparent[i];
-        }
-        if ((s->parent[0] || s->filename[0]) && pos < PATH_MAX_LEN - 1) {
-            s->path_buf[pos++] = '/';
-        }
-    }
     if (s->parent[0]) {
         for (int i = 0; i < NAME_MAX - 1 && s->parent[i] && pos < PATH_MAX_LEN - 2; i++) {
             s->path_buf[pos++] = s->parent[i];
@@ -151,31 +134,23 @@ static __always_inline u8 check_file_action(struct dentry* dentry, char* out_pat
     for (int i = 0; i < NAME_MAX - 1 && s->filename[i] && pos < PATH_MAX_LEN - 1; i++) {
         s->path_buf[pos++] = s->filename[i];
     }
-    
+
     __builtin_memcpy(out_path, s->path_buf, PATH_MAX_LEN);
     u8* action = bpf_map_lookup_elem(&monitored_files, s->path_buf);
     if (action)
         return *action;
 
-    // fallback - try parent/filename when available
     if (s->parent[0]) {
         __builtin_memset(s->path_buf, 0, PATH_MAX_LEN);
         pos = 0;
         for (int i = 0; i < NAME_MAX - 1 && s->parent[i] && pos < PATH_MAX_LEN - 2; i++) {
             s->path_buf[pos++] = s->parent[i];
         }
-        if (s->filename[0] && pos < PATH_MAX_LEN - 1) {
-            s->path_buf[pos++] = '/';
-        }
-        for (int i = 0; i < NAME_MAX - 1 && s->filename[i] && pos < PATH_MAX_LEN - 1; i++) {
-            s->path_buf[pos++] = s->filename[i];
-        }
         action = bpf_map_lookup_elem(&monitored_files, s->path_buf);
         if (action)
             return *action;
     }
 
-    // final fallback - try just filename (for simple rules)
     __builtin_memset(s->path_buf, 0, PATH_MAX_LEN);
     __builtin_memcpy(s->path_buf, s->filename, NAME_MAX);
     action = bpf_map_lookup_elem(&monitored_files, s->path_buf);
