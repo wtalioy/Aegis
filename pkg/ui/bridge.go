@@ -158,14 +158,21 @@ func (b *Bridge) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 }
 
 func (b *Bridge) HandleConnect(ev events.ConnectEvent) {
-	frontendEvent := ConnectToFrontend(ev, formatAddr(ev))
-	b.stats.RecordConnectEvent(frontendEvent)
-	b.stats.PublishEvent(frontendEvent)
-
 	b.mu.RLock()
 	re, pt := b.ruleEngine, b.processTree
 	prof := b.profiler
 	b.mu.RUnlock()
+
+	var processName string
+	if pt != nil {
+		if info, ok := pt.GetProcess(ev.PID); ok {
+			processName = info.Comm
+		}
+	}
+
+	frontendEvent := ConnectToFrontend(ev, formatAddr(ev), processName)
+	b.stats.RecordConnectEvent(frontendEvent)
+	b.stats.PublishEvent(frontendEvent)
 
 	if prof != nil && prof.IsActive() {
 		prof.HandleConnect(ev)
@@ -178,13 +185,6 @@ func (b *Bridge) HandleConnect(ev events.ConnectEvent) {
 	matched, rule, allowed := re.MatchConnect(&ev)
 	if !matched || rule == nil || allowed {
 		return
-	}
-
-	var processName string
-	if pt != nil {
-		if info, ok := pt.GetProcess(ev.PID); ok {
-			processName = info.Comm
-		}
 	}
 
 	blocked := ev.Blocked == 1

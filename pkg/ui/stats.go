@@ -29,6 +29,8 @@ type Stats struct {
 	alertsMu    sync.RWMutex
 	maxAlerts   int
 	totalAlerts atomic.Int64
+	alertDedup  map[alertKey]time.Time
+	dedupWindow time.Duration
 
 	recentExecs    []types.ExecEvent
 	recentFiles    []types.FileEvent
@@ -40,6 +42,13 @@ type Stats struct {
 
 	eventSubs   map[chan any]struct{}
 	eventSubsMu sync.RWMutex
+}
+
+type alertKey struct {
+	RuleName    string
+	ProcessName string
+	CgroupID    string
+	Action      string
 }
 
 type sseEvent struct {
@@ -56,6 +65,8 @@ func NewStats() *Stats {
 		recentConnects: make([]types.ConnectEvent, 0, 50),
 		maxRecent:      50,
 		eventSubs:      make(map[chan any]struct{}),
+		alertDedup:     make(map[alertKey]time.Time),
+		dedupWindow:    10 * time.Second,
 	}
 	go s.rateLoop()
 	return s
@@ -122,13 +133,40 @@ func (s *Stats) RecordConnectEvent(ev types.ConnectEvent) {
 }
 
 func (s *Stats) AddAlert(alert types.Alert) {
-	s.totalAlerts.Add(1)
 	s.alertsMu.Lock()
+	now := time.Now()
+	if s.dedupWindow > 0 {
+		s.purgeDedupLocked(now)
+		key := alertKey{
+			RuleName:    alert.RuleName,
+			ProcessName: alert.ProcessName,
+			CgroupID:    alert.CgroupID,
+			Action:      alert.Action,
+		}
+		if last, ok := s.alertDedup[key]; ok && now.Sub(last) < s.dedupWindow {
+			s.alertsMu.Unlock()
+			return
+		}
+		s.alertDedup[key] = now
+	}
 	if len(s.alerts) >= s.maxAlerts {
 		s.alerts = s.alerts[1:]
 	}
 	s.alerts = append(s.alerts, alert)
 	s.alertsMu.Unlock()
+	s.totalAlerts.Add(1)
+}
+
+func (s *Stats) purgeDedupLocked(now time.Time) {
+	if len(s.alertDedup) == 0 || s.dedupWindow <= 0 {
+		return
+	}
+	expireBefore := now.Add(-s.dedupWindow)
+	for key, ts := range s.alertDedup {
+		if ts.Before(expireBefore) {
+			delete(s.alertDedup, key)
+		}
+	}
 }
 
 func (s *Stats) Rates() (exec, file, net int64) {
@@ -217,16 +255,17 @@ func FileToFrontend(ev events.FileOpenEvent, filename string) types.FileEvent {
 	}
 }
 
-func ConnectToFrontend(ev events.ConnectEvent, addr string) types.ConnectEvent {
+func ConnectToFrontend(ev events.ConnectEvent, addr string, processName string) types.ConnectEvent {
 	return types.ConnectEvent{
-		Type:      "connect",
-		Timestamp: time.Now().UnixMilli(),
-		PID:       ev.PID,
-		CgroupID:  strconv.FormatUint(ev.CgroupID, 10),
-		Family:    ev.Family,
-		Port:      ev.Port,
-		Addr:      addr,
-		Blocked:   ev.Blocked == 1,
+		Type:        "connect",
+		Timestamp:   time.Now().UnixMilli(),
+		PID:         ev.PID,
+		ProcessName: processName,
+		CgroupID:    strconv.FormatUint(ev.CgroupID, 10),
+		Family:      ev.Family,
+		Port:        ev.Port,
+		Addr:        addr,
+		Blocked:     ev.Blocked == 1,
 	}
 }
 

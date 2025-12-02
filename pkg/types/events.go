@@ -24,14 +24,15 @@ type FileEvent struct {
 }
 
 type ConnectEvent struct {
-	Type      string `json:"type"`
-	Timestamp int64  `json:"timestamp"`
-	PID       uint32 `json:"pid"`
-	CgroupID  string `json:"cgroupId"`
-	Family    uint16 `json:"family"`
-	Port      uint16 `json:"port"`
-	Addr      string `json:"addr"`
-	Blocked   bool   `json:"blocked"`
+	Type        string `json:"type"`
+	Timestamp   int64  `json:"timestamp"`
+	PID         uint32 `json:"pid"`
+	ProcessName string `json:"processName,omitempty"`
+	CgroupID    string `json:"cgroupId"`
+	Family      uint16 `json:"family"`
+	Port        uint16 `json:"port"`
+	Addr        string `json:"addr"`
+	Blocked     bool   `json:"blocked"`
 }
 
 type Alert struct {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"eulerguard/pkg/types"
@@ -30,6 +31,17 @@ func LoadRules(filePath string) ([]types.Rule, error) {
 		if ruleSet.Rules[i].Type == "" {
 			ruleSet.Rules[i].Type = ruleSet.Rules[i].DeriveType()
 		}
+	}
+
+	if errs := ValidateRules(ruleSet.Rules); len(errs) > 0 {
+		var b strings.Builder
+		b.WriteString("rule validation failed:\n")
+		for _, err := range errs {
+			b.WriteString(" - ")
+			b.WriteString(err.Error())
+			b.WriteByte('\n')
+		}
+		return nil, fmt.Errorf("%s", strings.TrimSpace(b.String()))
 	}
 
 	return ruleSet.Rules, nil
@@ -110,4 +122,56 @@ func ruleSignature(r types.Rule) string {
 		r.Match.DestPort,
 		r.Action,
 	)
+}
+
+func ValidateRules(rules []types.Rule) []error {
+	var errs []error
+	for idx := range rules {
+		rule := rules[idx]
+		name := strings.TrimSpace(rule.Name)
+		displayName := ruleDisplayName(name, idx)
+
+		if name == "" {
+			errs = append(errs, fmt.Errorf("rule %d: missing name", idx+1))
+		}
+
+		if !isValidAction(rule.Action) {
+			errs = append(errs, fmt.Errorf("%s: action must be one of allow, alert, block", displayName))
+		}
+
+		switch rule.DeriveType() {
+		case types.RuleTypeExec:
+			if !hasExecCondition(rule.Match) {
+				errs = append(errs, fmt.Errorf("%s: exec rules require process_name, parent_name, cgroup_id, pid, or ppid", displayName))
+			}
+		case types.RuleTypeFile:
+			if strings.TrimSpace(rule.Match.Filename) == "" {
+				errs = append(errs, fmt.Errorf("%s: file rules require filename", displayName))
+			}
+		case types.RuleTypeConnect:
+			if rule.Match.DestPort == 0 && strings.TrimSpace(rule.Match.DestIP) == "" && strings.TrimSpace(rule.Match.ProcessName) == "" {
+				errs = append(errs, fmt.Errorf("%s: connect rules require dest_port, dest_ip, or process_name", displayName))
+			}
+		}
+	}
+	return errs
+}
+
+func hasExecCondition(match types.MatchCondition) bool {
+	return strings.TrimSpace(match.ProcessName) != "" ||
+		strings.TrimSpace(match.ParentName) != "" ||
+		strings.TrimSpace(match.CgroupID) != "" ||
+		match.PID != 0 ||
+		match.PPID != 0
+}
+
+func isValidAction(action types.ActionType) bool {
+	return action == types.ActionAllow || action == types.ActionAlert || action == types.ActionBlock
+}
+
+func ruleDisplayName(name string, idx int) string {
+	if name != "" {
+		return fmt.Sprintf("rule %q", name)
+	}
+	return fmt.Sprintf("rule #%d", idx+1)
 }

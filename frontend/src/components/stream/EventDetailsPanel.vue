@@ -105,6 +105,10 @@ watch(() => props.event, async (newEvent) => {
               <span class="detail-label">Parent</span>
               <span class="detail-value font-mono">{{ event.parentComm }}</span>
             </div>
+            <div v-else-if="event.type === 'connect' && event.processName" class="detail-row">
+              <span class="detail-label">Process</span>
+              <span class="detail-value font-mono">{{ event.processName }}</span>
+            </div>
             <div class="detail-row">
               <span class="detail-label">Cgroup ID</span>
               <span class="detail-value font-mono">{{ event.cgroupId }}</span>

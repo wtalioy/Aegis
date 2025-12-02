@@ -76,7 +76,7 @@ func (p *Profiler) HandleFileOpen(ev events.FileOpenEvent, filename string) {
 
 	profile := BehaviorProfile{
 		Type:     events.EventTypeFileOpen,
-		File:     filename,
+		File:     utils.SimplifyPath(filename),
 		CgroupID: ev.CgroupID,
 	}
 

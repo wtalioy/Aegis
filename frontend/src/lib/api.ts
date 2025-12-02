@@ -50,6 +50,7 @@ export interface ConnectEvent {
     type: 'connect'
     timestamp: number
     pid: number
+    processName?: string
     cgroupId: string
     family: number
     port: number

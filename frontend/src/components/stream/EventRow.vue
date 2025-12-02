@@ -49,6 +49,9 @@ const processName = computed(() => {
   if (props.event.type === 'exec') {
     return props.event.comm
   }
+  if (props.event.type === 'connect' && props.event.processName) {
+    return props.event.processName
+  }
   return `PID ${props.event.pid}`
 })
 

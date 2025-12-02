@@ -6,8 +6,26 @@ import (
 	"net"
 	"path/filepath"
 	"strings"
-	
+	"regexp"
+
 	"eulerguard/pkg/events"
+)
+
+var (
+	numericSegmentRe  = regexp.MustCompile(`^\d+$`)
+	hexSegmentRe      = regexp.MustCompile(`^(?:0x)?[0-9a-fA-F]{6,}$`)
+	ephemeralPrefixes = []string{
+		"/tmp/",
+		"/var/tmp/",
+		"/dev/shm/",
+	}
+	sensitivePrefixes = []string{
+		"/etc/",
+		"/bin/",
+		"/sbin/",
+		"/usr/bin/",
+		"/usr/sbin/",
+	}
 )
 
 // extract a null-terminated C string from a byte array
@@ -72,4 +90,46 @@ func PathVariants(path string) []string {
 	trimmed := strings.TrimLeft(clean, "/")
 	add(trimmed)
 	return variants
+}
+
+func SimplifyPath(raw string) string {
+	path := strings.TrimSpace(raw)
+	if path == "" {
+		return ""
+	}
+
+	cleaned := filepath.Clean(path)
+	if cleaned == "." {
+		return path
+	}
+
+	for _, prefix := range sensitivePrefixes {
+		base := strings.TrimSuffix(prefix, "/")
+		if cleaned == base || strings.HasPrefix(cleaned, prefix) {
+			return cleaned
+		}
+	}
+
+	for _, prefix := range ephemeralPrefixes {
+		base := strings.TrimSuffix(prefix, "/")
+		if strings.HasPrefix(cleaned, prefix) || cleaned == base {
+			return base + "/*"
+		}
+	}
+
+	segments := strings.Split(cleaned, "/")
+	for i, segment := range segments {
+		if segment == "" {
+			continue
+		}
+		if numericSegmentRe.MatchString(segment) || hexSegmentRe.MatchString(segment) {
+			segments[i] = "*"
+		}
+	}
+
+	simplified := strings.Join(segments, "/")
+	if simplified == "" {
+		return "/"
+	}
+	return simplified
 }
