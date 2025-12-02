@@ -52,6 +52,13 @@ rules:
       filename: docs/*
     action: alert
     type: file
+  - name: Block Makefile
+    description: Block access to Makefile
+    severity: warning
+    match:
+      filename: Makefile
+    action: block
+    type: file
 
   # ============================================
   # Network Connection Rules (connect)
