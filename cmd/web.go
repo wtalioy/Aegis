@@ -1,6 +1,6 @@
 //go:build web
 
-// EulerGuard Web Server
+// Aegis Web Server
 package main
 
 import (
@@ -9,9 +9,9 @@ import (
 	"log"
 	"time"
 
-	"eulerguard/pkg/ai"
-	"eulerguard/pkg/config"
-	"eulerguard/pkg/ui"
+	"aegis/pkg/ai"
+	"aegis/pkg/config"
+	"aegis/pkg/server/cmd"
 )
 
 //go:embed all:frontend/dist
@@ -22,14 +22,14 @@ func main() {
 
 	prewarmAIRuntime(opts)
 
-	log.Println("Starting EulerGuard Web Server...")
-	if err := ui.RunWebServer(opts, opts.WebPort, assets); err != nil {
-		log.Fatalf("eulerguard-web: %v", err)
+	log.Println("Starting Aegis Web Server...")
+	if err := cmd.RunWebServer(opts, opts.WebPort, assets); err != nil {
+		log.Fatalf("aegis-web: %v", err)
 	}
 }
 
 func prewarmAIRuntime(opts config.Options) {
-	if !opts.AI.Enabled || opts.AI.Mode != "ollama" {
+	if opts.AI.Mode != "ollama" {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)

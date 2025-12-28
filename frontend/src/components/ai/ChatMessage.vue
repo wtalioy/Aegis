@@ -55,7 +55,7 @@ const renderedContent = computed(() => {
         </div>
         <div class="content">
             <div class="meta">
-                <span class="role">{{ isUser ? 'You' : 'EulerGuard AI' }}</span>
+                <span class="role">{{ isUser ? 'You' : 'Aegis AI' }}</span>
                 <span class="time">{{ formattedTime }}</span>
             </div>
             <div v-if="isUser" class="text">{{ message.content }}</div>

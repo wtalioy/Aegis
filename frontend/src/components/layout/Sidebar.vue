@@ -2,22 +2,21 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  LayoutDashboard,
-  Radio,
-  Radar,
-  FileCode,
-  Boxes,
-  Brain,
-  Cpu,
+  Target,
+  Wand2,
+  Search,
+  Bot,
+  Settings,
   Shield,
-  MessageSquare
+  CheckCircle2,
+  ClipboardCheck
 } from 'lucide-vue-next'
 
 interface NavItem {
   icon: any
   label: string
   route: string
-  section: 'guard' | 'insights'
+  section: 'core' | 'system'
   badge?: number
   badgeType?: 'default' | 'critical'
 }
@@ -25,61 +24,50 @@ interface NavItem {
 const route = useRoute()
 
 const navItems: NavItem[] = [
-  { icon: LayoutDashboard, label: 'Dashboard', route: '/', section: 'guard' },
-  { icon: Radio, label: 'Live Stream', route: '/stream', section: 'guard' },
-  { icon: Radar, label: 'Security Events', route: '/alerts', section: 'guard' },
-  { icon: FileCode, label: 'Security Rules', route: '/rules', section: 'guard' },
-  { icon: Boxes, label: 'Workloads', route: '/workloads', section: 'guard' },
-  { icon: Brain, label: 'Behavior Profiler', route: '/profiler', section: 'guard' },
-  // INSIGHTS section
-  { icon: MessageSquare, label: 'AI Chat', route: '/ai', section: 'insights' },
-  { icon: Cpu, label: 'Kernel X-Ray', route: '/kernel', section: 'insights' },
+  { icon: Target, label: 'Observatory', route: '/observatory', section: 'core' },
+  { icon: Wand2, label: 'Policy Studio', route: '/policy-studio', section: 'core' },
+  { icon: ClipboardCheck, label: 'Rule Validation', route: '/rule-validation', section: 'core' },
+  { icon: Search, label: 'Investigation', route: '/investigation', section: 'core' },
+  { icon: Bot, label: 'Sentinel', route: '/sentinel', section: 'core' },
+  { icon: Settings, label: 'Settings', route: '/settings', section: 'system' },
 ]
 
-const guardItems = computed(() => navItems.filter(item => item.section === 'guard'))
-const insightsItems = computed(() => navItems.filter(item => item.section === 'insights'))
+const coreItems = computed(() => navItems.filter(item => item.section === 'core'))
+const systemItems = computed(() => navItems.filter(item => item.section === 'system'))
 
-const isActive = (path: string) => route.path === path
+const isActive = (path: string) => {
+  // Handle Observatory - / redirects to /observatory
+  if (path === '/observatory') {
+    return route.path === '/observatory' || route.path === '/'
+  }
+  return route.path === path
+}
 </script>
 
 <template>
   <aside class="sidebar">
     <div class="sidebar-header">
       <Shield class="logo-icon" />
-      <span class="logo-text">EulerGuard</span>
+      <span class="logo-text">Aegis</span>
     </div>
 
     <nav class="sidebar-nav">
       <div class="nav-section">
-        <span class="nav-section-label">GUARD</span>
-        <router-link
-          v-for="item in guardItems"
-          :key="item.route"
-          :to="item.route"
-          class="nav-item"
-          :class="{ active: isActive(item.route) }"
-        >
+        <span class="nav-section-label">CORE</span>
+        <router-link v-for="item in coreItems" :key="item.route" :to="item.route" class="nav-item"
+          :class="{ active: isActive(item.route) }">
           <component :is="item.icon" class="nav-icon" :size="20" />
           <span class="nav-label">{{ item.label }}</span>
-          <span
-            v-if="item.badge"
-            class="nav-badge"
-            :class="{ critical: item.badgeType === 'critical' }"
-          >
+          <span v-if="item.badge" class="nav-badge" :class="{ critical: item.badgeType === 'critical' }">
             {{ item.badge }}
           </span>
         </router-link>
       </div>
 
       <div class="nav-section">
-        <span class="nav-section-label">INSIGHTS</span>
-        <router-link
-          v-for="item in insightsItems"
-          :key="item.route"
-          :to="item.route"
-          class="nav-item"
-          :class="{ active: isActive(item.route) }"
-        >
+        <span class="nav-section-label">SYSTEM</span>
+        <router-link v-for="item in systemItems" :key="item.route" :to="item.route" class="nav-item"
+          :class="{ active: isActive(item.route) }">
           <component :is="item.icon" class="nav-icon" :size="20" />
           <span class="nav-label">{{ item.label }}</span>
         </router-link>
@@ -143,7 +131,7 @@ const isActive = (path: string) => route.path === path
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
-  margin: 2px 8px;
+  margin: 5px 8px;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   text-decoration: none;
@@ -184,4 +172,3 @@ const isActive = (path: string) => route.path === path
   color: var(--status-critical);
 }
 </style>
-

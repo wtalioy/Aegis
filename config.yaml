@@ -1,16 +1,10 @@
-# EulerGuard Configuration File
+# Aegis Configuration File
 
 # Path to compiled eBPF object file
 bpf_path: ./bpf/main.bpf.o
 
 # Path to detection rules file
 rules_path: ./rules.yaml
-
-# Path to log file
-log_file: ./runtime.log
-
-# Output events as JSON lines (default: false)
-json_output: false
 
 # Ring buffer size in bytes (default: 262144 = 256KB)
 # Increase for high-load systems to prevent event loss
@@ -29,29 +23,10 @@ process_tree_max_size: 10000
 # Maximum number of ancestors to trace when building process chains
 process_tree_max_chain_length: 50
 
-# Log buffer size in bytes (default: 65536 = 64KB)
-# Larger buffers reduce I/O but use more memory
-log_buffer_size: 65536
-
 # ============================================
-# Learning Mode Configuration (CLI specific)
-# ============================================
-
-# Enable learning mode to auto-generate whitelist rules (default: false)
-# When enabled, EulerGuard will observe behavior and generate rules
-learn_mode: false
-
-# Duration for learning mode (default: 5m)
-# Format: 30s, 5m, 1h, etc.
-learn_duration: 5m
-
-# ============================================
-# AI Intelligent Diagnosis Configuration (Web UI specific)
+# AI Intelligent Diagnosis Configuration
 # ============================================
 ai:
-  # Enable AI diagnosis feature (default: true)
-  enabled: true
-  
   # Provider mode: "ollama" (local, recommended) or "openai" (API)
   mode: "ollama"
   
@@ -68,9 +43,19 @@ ai:
   openai:
     # API endpoint (DeepSeek, OpenAI, or any compatible service)
     endpoint: "https://api.deepseek.com"
-    # API key (can also use EULERGUARD_AI_API_KEY env var)
+    # API key (can also use AEGIS_AI_API_KEY env var)
     api_key: ""
     # Model name
     model: "deepseek-chat"
     # Request timeout in seconds
     timeout: 30
+
+# ============================================
+# Rule Promotion Configuration
+# ============================================
+# Minimum observation minutes required for promotion (default: 1440 = 24h)
+# Format: number of minutes (e.g., 1440 for 24 hours, 2880 for 48 hours)
+promotion_min_observation_minutes: 1440
+
+# Minimum hit count required for promotion (default: 100)
+promotion_min_hits: 100

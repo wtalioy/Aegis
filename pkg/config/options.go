@@ -14,37 +14,37 @@ const (
 	DefaultProcessTreeMaxAge         = 30 * time.Minute // 30 minutes
 	DefaultProcessTreeMaxSize        = 10000
 	DefaultProcessTreeMaxChainLength = 50
-	DefaultLogBufferSize             = 64 * 1024  // 64KB
 	DefaultRingBufferSize            = 256 * 1024 // 256KB
-	DefaultLearnDuration             = 5 * time.Minute
 )
 
 type Options struct {
 	BPFPath                   string        `yaml:"bpf_path"`
 	RulesPath                 string        `yaml:"rules_path"`
-	LogFile                   string        `yaml:"log_file"`
-	JSONLines                 bool          `yaml:"json_output"`
 	RingBufferSize            int           `yaml:"ring_buffer_size"`
 	ProcessTreeMaxAge         time.Duration `yaml:"process_tree_max_age"`
 	ProcessTreeMaxSize        int           `yaml:"process_tree_max_size"`
 	ProcessTreeMaxChainLength int           `yaml:"process_tree_max_chain_length"`
-	LogBufferSize             int           `yaml:"log_buffer_size"`
 
-	LearnMode     bool          `yaml:"learn_mode"`
-	LearnDuration time.Duration `yaml:"learn_duration"`
+	// Rule promotion configuration
+	PromotionMinObservationMinutes int `yaml:"promotion_min_observation_minutes"`
+	PromotionMinHits               int `yaml:"promotion_min_hits"`
 
-	WebMode bool `yaml:"-"`
-	WebPort int  `yaml:"-"`
+	WebPort int `yaml:"-"`
 
 	// AI configuration
 	AI AIOptions `yaml:"ai"`
 }
 
 type AIOptions struct {
-	Enabled bool          `yaml:"enabled"`
-	Mode    string        `yaml:"mode"` // "ollama" or "openai"
-	Ollama  OllamaOptions `yaml:"ollama"`
-	OpenAI  OpenAIOptions `yaml:"openai"`
+	Mode   string        `yaml:"mode"` // "ollama" or "openai"
+	Ollama OllamaOptions `yaml:"ollama"`
+	OpenAI OpenAIOptions `yaml:"openai"`
+
+	// Optional Sentinel schedule overrides (durations as strings, e.g. "5m").
+	SentinelTestingPromotion string `yaml:"sentinel_testing_promotion"`
+	SentinelAnomaly          string `yaml:"sentinel_anomaly"`
+	SentinelRuleOptimization string `yaml:"sentinel_rule_optimization"`
+	SentinelDailyReport      string `yaml:"sentinel_daily_report"`
 }
 
 type OllamaOptions struct {
@@ -69,16 +69,14 @@ func ParseOptions() Options {
 	configPath := filepath.Join(cwd, "config.yaml")
 
 	opts := Options{
-		BPFPath:                   filepath.Join(cwd, "bpf", "main.bpf.o"),
-		RulesPath:                 filepath.Join(cwd, "rules.yaml"),
-		LogFile:                   filepath.Join(cwd, "eulerguard.log"),
-		ProcessTreeMaxAge:         DefaultProcessTreeMaxAge,
-		ProcessTreeMaxSize:        DefaultProcessTreeMaxSize,
-		ProcessTreeMaxChainLength: DefaultProcessTreeMaxChainLength,
-		LogBufferSize:             DefaultLogBufferSize,
-		RingBufferSize:            DefaultRingBufferSize,
-		LearnMode:     false,
-		LearnDuration: DefaultLearnDuration,
+		BPFPath:                        filepath.Join(cwd, "bpf", "main.bpf.o"),
+		RulesPath:                      filepath.Join(cwd, "rules.yaml"),
+		ProcessTreeMaxAge:              DefaultProcessTreeMaxAge,
+		ProcessTreeMaxSize:             DefaultProcessTreeMaxSize,
+		ProcessTreeMaxChainLength:      DefaultProcessTreeMaxChainLength,
+		RingBufferSize:                 DefaultRingBufferSize,
+		PromotionMinObservationMinutes: 1440, // 24 hours
+		PromotionMinHits:               100,
 	}
 
 	data, err := os.ReadFile(configPath)
@@ -90,7 +88,7 @@ func ParseOptions() Options {
 		return opts
 	}
 
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to parse config file: %v\n", err)
 		os.Exit(1)
@@ -102,12 +100,6 @@ func ParseOptions() Options {
 	if v, ok := raw["rules_path"].(string); ok && v != "" {
 		opts.RulesPath = v
 	}
-	if v, ok := raw["log_file"].(string); ok && v != "" {
-		opts.LogFile = v
-	}
-	if v, ok := raw["json_output"].(bool); ok {
-		opts.JSONLines = v
-	}
 	if v, ok := raw["ring_buffer_size"].(int); ok && v > 0 {
 		opts.RingBufferSize = v
 	}
@@ -117,34 +109,26 @@ func ParseOptions() Options {
 	if v, ok := raw["process_tree_max_chain_length"].(int); ok && v > 0 {
 		opts.ProcessTreeMaxChainLength = v
 	}
-	if v, ok := raw["log_buffer_size"].(int); ok && v > 0 {
-		opts.LogBufferSize = v
-	}
 	if v, ok := raw["process_tree_max_age"].(string); ok && v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			opts.ProcessTreeMaxAge = d
 		}
 	}
 
-	// Learn mode options
-	if v, ok := raw["learn_mode"].(bool); ok {
-		opts.LearnMode = v
+	// Rule promotion configuration
+	if v, ok := raw["promotion_min_observation_minutes"].(int); ok && v > 0 {
+		opts.PromotionMinObservationMinutes = v
 	}
-	if v, ok := raw["learn_duration"].(string); ok && v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			opts.LearnDuration = d
-		}
+	if v, ok := raw["promotion_min_hits"].(int); ok && v > 0 {
+		opts.PromotionMinHits = v
 	}
 
 	// AI configuration
-	if aiRaw, ok := raw["ai"].(map[string]interface{}); ok {
-		if v, ok := aiRaw["enabled"].(bool); ok {
-			opts.AI.Enabled = v
-		}
+	if aiRaw, ok := raw["ai"].(map[string]any); ok {
 		if v, ok := aiRaw["mode"].(string); ok {
 			opts.AI.Mode = v
 		}
-		if ollamaRaw, ok := aiRaw["ollama"].(map[string]interface{}); ok {
+		if ollamaRaw, ok := aiRaw["ollama"].(map[string]any); ok {
 			if v, ok := ollamaRaw["endpoint"].(string); ok {
 				opts.AI.Ollama.Endpoint = v
 			}
@@ -155,7 +139,7 @@ func ParseOptions() Options {
 				opts.AI.Ollama.Timeout = v
 			}
 		}
-		if openaiRaw, ok := aiRaw["openai"].(map[string]interface{}); ok {
+		if openaiRaw, ok := aiRaw["openai"].(map[string]any); ok {
 			if v, ok := openaiRaw["endpoint"].(string); ok {
 				opts.AI.OpenAI.Endpoint = v
 			}
@@ -168,6 +152,19 @@ func ParseOptions() Options {
 			if v, ok := openaiRaw["timeout"].(int); ok {
 				opts.AI.OpenAI.Timeout = v
 			}
+		}
+
+		if v, ok := aiRaw["sentinel_testing_promotion"].(string); ok && v != "" {
+			opts.AI.SentinelTestingPromotion = v
+		}
+		if v, ok := aiRaw["sentinel_anomaly"].(string); ok && v != "" {
+			opts.AI.SentinelAnomaly = v
+		}
+		if v, ok := aiRaw["sentinel_rule_optimization"].(string); ok && v != "" {
+			opts.AI.SentinelRuleOptimization = v
+		}
+		if v, ok := aiRaw["sentinel_daily_report"].(string); ok && v != "" {
+			opts.AI.SentinelDailyReport = v
 		}
 	}
 
@@ -195,9 +192,7 @@ func ParseOptions() Options {
 	}
 
 	// Parse command line flags (override config file)
-	flag.BoolVar(&opts.WebMode, "web", false, "Launch web GUI (accessible via browser)")
 	flag.IntVar(&opts.WebPort, "port", 3000, "Port for web GUI (default: 3000)")
-	flag.BoolVar(&opts.LearnMode, "learn", opts.LearnMode, "Enable learning mode")
 	flag.Parse()
 
 	return opts

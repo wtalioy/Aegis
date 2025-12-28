@@ -8,7 +8,7 @@ import (
 	"strings"
 	"regexp"
 
-	"eulerguard/pkg/events"
+	"aegis/pkg/events"
 )
 
 var (

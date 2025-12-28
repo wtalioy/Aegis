@@ -1,17 +1,16 @@
 package rules
 
 import (
-	"eulerguard/pkg/events"
-	"eulerguard/pkg/types"
-	"eulerguard/pkg/utils"
+	"aegis/pkg/events"
+	"aegis/pkg/utils"
 )
 
 type connectMatcher struct {
-	rules []*types.Rule
+	rules []*Rule
 }
 
-func newConnectMatcher(rules []types.Rule) *connectMatcher {
-	matcher := &connectMatcher{rules: make([]*types.Rule, 0)}
+func newConnectMatcher(rules []Rule) *connectMatcher {
+	matcher := &connectMatcher{rules: make([]*Rule, 0)}
 	for i := range rules {
 		if rules[i].Match.DestPort != 0 || rules[i].Match.DestIP != "" {
 			matcher.rules = append(matcher.rules, &rules[i])
@@ -20,11 +19,11 @@ func newConnectMatcher(rules []types.Rule) *connectMatcher {
 	return matcher
 }
 
-func (m *connectMatcher) Match(event *events.ConnectEvent) (matched bool, rule *types.Rule, allowed bool) {
+func (m *connectMatcher) Match(event *events.ConnectEvent) (matched bool, rule *Rule, allowed bool) {
 	return filterRulesByAction(m.rules, m.matchRule, event)
 }
 
-func (m *connectMatcher) matchRule(rule *types.Rule, event *events.ConnectEvent) bool {
+func (m *connectMatcher) matchRule(rule *Rule, event *events.ConnectEvent) bool {
 	match := rule.Match
 	if match.DestPort == 0 && match.DestIP == "" {
 		return false
@@ -37,5 +36,5 @@ func (m *connectMatcher) matchRule(rule *types.Rule, event *events.ConnectEvent)
 			return false
 		}
 	}
-	return matchCgroupID(match.CgroupID, event.CgroupID) && matchPID(match.PID, event.PID)
+	return matchCgroupID(match.CgroupID, event.Hdr.CgroupID) && matchPID(match.PID, event.Hdr.PID)
 }

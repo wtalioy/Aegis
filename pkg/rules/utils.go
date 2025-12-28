@@ -3,18 +3,16 @@ package rules
 import (
 	"strconv"
 	"strings"
-
-	"eulerguard/pkg/types"
 )
 
 // match a value against a pattern using the specified match type.
-func matchString(value, pattern string, matchType types.MatchType) bool {
+func matchString(value, pattern string, matchType MatchType) bool {
 	switch matchType {
-	case types.MatchTypeExact:
+	case MatchTypeExact:
 		return value == pattern
-	case types.MatchTypePrefix:
+	case MatchTypePrefix:
 		return strings.HasPrefix(value, pattern)
-	case types.MatchTypeContains:
+	case MatchTypeContains:
 		return strings.Contains(value, pattern)
 	default:
 		return strings.Contains(value, pattern)
@@ -30,22 +28,32 @@ func matchPID(pattern uint32, pid uint32) bool {
 }
 
 // Returns: matched (any rule matched), rule (the matching rule), allowed (should the action be allowed)
-func filterRulesByAction[T any](rules []*types.Rule, matchFn func(*types.Rule, T) bool, event T) (matched bool, rule *types.Rule, allowed bool) {
-	var blockRule *types.Rule
-	var alertRule *types.Rule
+func filterRulesByAction[T any](rules []*Rule, matchFn func(*Rule, T) bool, event T) (matched bool, rule *Rule, allowed bool) {
+	var blockRule *Rule
+	var alertRule *Rule
 
 	for _, r := range rules {
 		if !matchFn(r, event) {
 			continue
 		}
+
+		// Testing rules should never block - treat them as alert/monitor only
+		if r.IsTesting() {
+			// Testing rules always act as alert/monitor, regardless of their action
+			if alertRule == nil {
+				alertRule = r
+			}
+			continue
+		}
+
 		switch r.Action {
-		case types.ActionAllow:
+		case ActionAllow:
 			return true, r, true
-		case types.ActionBlock:
+		case ActionBlock:
 			if blockRule == nil {
 				blockRule = r
 			}
-		case types.ActionAlert:
+		case ActionAlert:
 			if alertRule == nil {
 				alertRule = r
 			}

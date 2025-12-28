@@ -116,18 +116,7 @@ const copyYaml = async () => {
   border-color: var(--border-default);
 }
 
-/* Action-based left border accent */
-.rule-card.action-block {
-  border-left: 3px solid var(--status-blocked);
-}
-
-.rule-card.action-alert {
-  border-left: 3px solid var(--status-warning);
-}
-
-.rule-card.action-allow {
-  border-left: 3px solid var(--status-safe);
-}
+/* Action-based left border accent - removed per user preference */
 
 /* Header */
 .rule-header {
@@ -353,12 +342,20 @@ const copyYaml = async () => {
   border-radius: var(--radius-sm);
   font-size: 11px;
   color: var(--text-secondary);
-  transition: all var(--transition-fast);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+  background: transparent;
 }
 
 .copy-btn:hover {
-  background: var(--bg-overlay);
+  background: var(--bg-hover);
   color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.copy-btn:active {
+  transform: translateY(0);
 }
 
 .copy-btn .copied {

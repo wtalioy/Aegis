@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
-
-	"eulerguard/pkg/types"
 )
 
 func TestInodeMatchingWithHardlink(t *testing.T) {
@@ -21,12 +19,12 @@ func TestInodeMatchingWithHardlink(t *testing.T) {
 		t.Fatalf("Failed to create hardlink: %v", err)
 	}
 
-	rules := []types.Rule{
+	rules := []Rule{
 		{
 			Name:     "Alert on sensitive file",
 			Severity: "high",
-			Action:   types.ActionAlert,
-			Match: types.MatchCondition{
+			Action:   ActionAlert,
+			Match: MatchCondition{
 				Filename: original,
 			},
 		},
@@ -59,12 +57,12 @@ func TestFileRuleFallsBackToPathWhenInodeMissing(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "nonexistent.txt")
 
-	rules := []types.Rule{
+	rules := []Rule{
 		{
 			Name:     "Monitor missing file",
 			Severity: "medium",
-			Action:   types.ActionAlert,
-			Match: types.MatchCondition{
+			Action:   ActionAlert,
+			Match: MatchCondition{
 				Filename: target,
 			},
 		},
@@ -85,12 +83,12 @@ func TestFileRuleFallsBackToPathWhenInodeMissing(t *testing.T) {
 }
 
 func TestRelativePathRuleMatches(t *testing.T) {
-	rules := []types.Rule{
+	rules := []Rule{
 		{
 			Name:     "Docs file alert",
 			Severity: "low",
-			Action:   types.ActionAlert,
-			Match: types.MatchCondition{
+			Action:   ActionAlert,
+			Match: MatchCondition{
 				Filename: "docs/readme.md",
 			},
 		},
@@ -105,12 +103,12 @@ func TestRelativePathRuleMatches(t *testing.T) {
 }
 
 func TestWildcardFilenameMatchesCanonicalForms(t *testing.T) {
-	rules := []types.Rule{
+	rules := []Rule{
 		{
 			Name:     "Monitor log dir",
 			Severity: "medium",
-			Action:   types.ActionAlert,
-			Match: types.MatchCondition{
+			Action:   ActionAlert,
+			Match: MatchCondition{
 				Filename: "/var/log/*",
 			},
 		},

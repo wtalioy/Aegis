@@ -6,29 +6,38 @@ import (
 	"log"
 	"time"
 
-	"eulerguard/pkg/config"
-	"eulerguard/pkg/types"
-	"eulerguard/pkg/workload"
+	"aegis/pkg/ai/chat"
+	"aegis/pkg/ai/diagnostics"
+	"aegis/pkg/ai/providers"
+	"aegis/pkg/ai/snapshot"
+	"aegis/pkg/ai/types"
+	"aegis/pkg/config"
+	"aegis/pkg/metrics"
+	"aegis/pkg/proc"
+	"aegis/pkg/storage"
+	"aegis/pkg/workload"
 )
 
 type Service struct {
 	provider      Provider
-	conversations *ConversationStore
-	enabled       bool
+	conversations *chat.Store
+}
+
+func NewClient(p Provider) *Service {
+	return &Service{
+		provider:      p,
+		conversations: chat.NewStore(),
+	}
 }
 
 func NewService(opts config.AIOptions) (*Service, error) {
-	if !opts.Enabled {
-		return &Service{enabled: false}, nil
-	}
-
 	var provider Provider
 
 	switch opts.Mode {
 	case "ollama":
-		provider = NewOllamaProvider(opts.Ollama)
+		provider = providers.NewOllamaProvider(opts.Ollama)
 	case "openai":
-		provider = NewOpenAIProvider(opts.OpenAI)
+		provider = providers.NewOpenAIProvider(opts.OpenAI)
 	default:
 		return nil, fmt.Errorf("unknown AI mode: %s", opts.Mode)
 	}
@@ -41,24 +50,26 @@ func NewService(opts config.AIOptions) (*Service, error) {
 		log.Printf("[AI] Provider %s initialized successfully", provider.Name())
 	}
 
-	return &Service{
-		provider:      provider,
-		conversations: NewConversationStore(),
-		enabled:       true,
-	}, nil
+	return NewClient(provider), nil
 }
 
 func (s *Service) IsEnabled() bool {
-	return s.enabled && s.provider != nil
+	return s.provider != nil
 }
 
-func (s *Service) GetStatus() StatusDTO {
-	if !s.enabled {
-		return StatusDTO{
-			Enabled:  false,
+func (s *Service) SingleChat(ctx context.Context, prompt string) (string, error) {
+	if s.provider == nil {
+		return "", fmt.Errorf("AI service is not available")
+	}
+	return s.provider.SingleChat(ctx, prompt)
+}
+
+func (s *Service) GetStatus() types.StatusDTO {
+	if s.provider == nil {
+		return types.StatusDTO{
+			Status:   "unavailable",
 			Provider: "",
 			IsLocal:  false,
-			Status:   "disabled",
 		}
 	}
 
@@ -69,8 +80,7 @@ func (s *Service) GetStatus() StatusDTO {
 		status = "unavailable"
 	}
 
-	return StatusDTO{
-		Enabled:  true,
+	return types.StatusDTO{
 		Provider: s.provider.Name(),
 		IsLocal:  s.provider.IsLocal(),
 		Status:   status,
@@ -79,30 +89,31 @@ func (s *Service) GetStatus() StatusDTO {
 
 func (s *Service) Diagnose(
 	ctx context.Context,
-	stats types.StatsProvider,
+	statsProvider metrics.StatsProvider,
 	workloadReg *workload.Registry,
-	procTreeSize int,
-) (*DiagnosisResult, error) {
-	if !s.enabled {
-		return nil, fmt.Errorf("AI diagnosis is not enabled")
+	store storage.EventStore,
+	processTree *proc.ProcessTree,
+) (*types.DiagnosisResult, error) {
+	if s.provider == nil {
+		return nil, fmt.Errorf("AI service is not available")
 	}
 
 	startTime := time.Now()
 
-	snapshot := BuildSnapshot(stats, workloadReg, procTreeSize)
-	prompt, err := GeneratePrompt(snapshot)
+	result := snapshot.NewSnapshot(statsProvider, workloadReg, store, processTree).Build()
+	promptText, err := diagnostics.BuildPrompt(result.State)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate prompt: %w", err)
 	}
 
-	response, err := s.provider.SingleChat(ctx, prompt)
+	response, err := s.provider.SingleChat(ctx, promptText)
 	if err != nil {
 		return nil, fmt.Errorf("AI inference failed: %w", err)
 	}
 
-	return &DiagnosisResult{
+	return &types.DiagnosisResult{
 		Analysis:        response,
-		SnapshotSummary: FormatSnapshotSummary(snapshot),
+		SnapshotSummary: diagnostics.SnapshotSummary(result.State),
 		Provider:        s.provider.Name(),
 		IsLocal:         s.provider.IsLocal(),
 		DurationMs:      time.Since(startTime).Milliseconds(),
@@ -114,12 +125,13 @@ func (s *Service) Chat(
 	ctx context.Context,
 	sessionID string,
 	userMessage string,
-	stats types.StatsProvider,
+	statsProvider metrics.StatsProvider,
 	workloadReg *workload.Registry,
-	procTreeSize int,
-) (*ChatResponse, error) {
-	if !s.enabled {
-		return nil, fmt.Errorf("AI chat is not enabled")
+	store storage.EventStore,
+	processTree *proc.ProcessTree,
+) (*types.ChatResponse, error) {
+	if s.provider == nil {
+		return nil, fmt.Errorf("AI service is not available")
 	}
 
 	startTime := time.Now()
@@ -127,29 +139,29 @@ func (s *Service) Chat(
 	conv := s.conversations.GetOrCreate(sessionID)
 	history := s.conversations.GetMessages(sessionID)
 
-	snapshot := BuildSnapshot(stats, workloadReg, procTreeSize)
-	messages := BuildChatMessages(history, snapshot, userMessage)
+	result := snapshot.NewSnapshot(statsProvider, workloadReg, store, processTree).Build()
+	messages := chat.BuildMessages(history, result.State, userMessage, processTree, result.ProcessKeyToChain, result.ProcessNameToChain)
 
 	response, err := s.provider.MultiChat(ctx, messages)
 	if err != nil {
 		return nil, fmt.Errorf("AI chat failed: %w", err)
 	}
 
-	s.conversations.AddMessage(sessionID, Message{
+	s.conversations.AddMessage(sessionID, types.Message{
 		Role:      "user",
 		Content:   userMessage,
 		Timestamp: time.Now().UnixMilli(),
 	})
-	s.conversations.AddMessage(sessionID, Message{
+	s.conversations.AddMessage(sessionID, types.Message{
 		Role:      "assistant",
 		Content:   response,
 		Timestamp: time.Now().UnixMilli(),
 	})
 
-	return &ChatResponse{
+	return &types.ChatResponse{
 		Message:        response,
 		SessionID:      sessionID,
-		ContextSummary: FormatSnapshotSummary(snapshot),
+		ContextSummary: diagnostics.SnapshotSummary(result.State),
 		Provider:       s.provider.Name(),
 		IsLocal:        s.provider.IsLocal(),
 		DurationMs:     time.Since(startTime).Milliseconds(),
@@ -162,26 +174,27 @@ func (s *Service) ChatStream(
 	ctx context.Context,
 	sessionID string,
 	userMessage string,
-	stats types.StatsProvider,
+	statsProvider metrics.StatsProvider,
 	workloadReg *workload.Registry,
-	procTreeSize int,
-) (<-chan ChatStreamToken, error) {
-	if !s.enabled {
-		return nil, fmt.Errorf("AI chat is not enabled")
+	store storage.EventStore,
+	processTree *proc.ProcessTree,
+) (<-chan types.ChatStreamToken, error) {
+	if s.provider == nil {
+		return nil, fmt.Errorf("AI service is not available")
 	}
 
 	s.conversations.GetOrCreate(sessionID)
 	history := s.conversations.GetMessages(sessionID)
 
-	snapshot := BuildSnapshot(stats, workloadReg, procTreeSize)
-	messages := BuildChatMessages(history, snapshot, userMessage)
+	result := snapshot.NewSnapshot(statsProvider, workloadReg, store, processTree).Build()
+	messages := chat.BuildMessages(history, result.State, userMessage, processTree, result.ProcessKeyToChain, result.ProcessNameToChain)
 
 	tokenChan, err := s.provider.MultiChatStream(ctx, messages)
 	if err != nil {
 		return nil, fmt.Errorf("AI stream failed: %w", err)
 	}
 
-	outputChan := make(chan ChatStreamToken, 100)
+	outputChan := make(chan types.ChatStreamToken, 100)
 
 	go func() {
 		defer close(outputChan)
@@ -190,25 +203,25 @@ func (s *Service) ChatStream(
 
 		for token := range tokenChan {
 			if token.Error != nil {
-				outputChan <- ChatStreamToken{Error: token.Error.Error()}
+				outputChan <- types.ChatStreamToken{Error: token.Error.Error()}
 				return
 			}
 
 			fullResponse += token.Content
 
-			outputChan <- ChatStreamToken{
+			outputChan <- types.ChatStreamToken{
 				Content:   token.Content,
 				Done:      token.Done,
 				SessionID: sessionID,
 			}
 
 			if token.Done {
-				s.conversations.AddMessage(sessionID, Message{
+				s.conversations.AddMessage(sessionID, types.Message{
 					Role:      "user",
 					Content:   userMessage,
 					Timestamp: time.Now().UnixMilli(),
 				})
-				s.conversations.AddMessage(sessionID, Message{
+				s.conversations.AddMessage(sessionID, types.Message{
 					Role:      "assistant",
 					Content:   fullResponse,
 					Timestamp: time.Now().UnixMilli(),
@@ -220,7 +233,7 @@ func (s *Service) ChatStream(
 	return outputChan, nil
 }
 
-func (s *Service) GetChatHistory(sessionID string) []Message {
+func (s *Service) GetChatHistory(sessionID string) []types.Message {
 	if s.conversations == nil {
 		return nil
 	}

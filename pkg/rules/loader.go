@@ -6,19 +6,18 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-
-	"eulerguard/pkg/types"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
-func LoadRules(filePath string) ([]types.Rule, error) {
+func LoadRules(filePath string) ([]Rule, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read rules file: %w", err)
 	}
 
-	var ruleSet types.RuleSet
+	var ruleSet RuleSet
 	if err := yaml.Unmarshal(data, &ruleSet); err != nil {
 		return nil, fmt.Errorf("failed to parse rules YAML: %w", err)
 	}
@@ -47,9 +46,29 @@ func LoadRules(filePath string) ([]types.Rule, error) {
 	return ruleSet.Rules, nil
 }
 
-func SaveRules(filePath string, ruleList []types.Rule) error {
-	ruleSet := types.RuleSet{
-		Rules: ruleList,
+func CleanRuleForYAML(rule Rule) Rule {
+	clean := rule
+	// Clear metadata fields that shouldn't be in YAML
+	clean.CreatedAt = time.Time{}
+	clean.DeployedAt = nil
+	clean.PromotedAt = nil
+	clean.ActualTestingHits = 0
+	clean.PromotionScore = 0
+	clean.PromotionReasons = nil
+	clean.LastReviewedAt = nil
+	clean.ReviewNotes = ""
+	return clean
+}
+
+func SaveRules(filePath string, ruleList []Rule) error {
+	// Clean rules before saving (remove metadata fields)
+	cleanRules := make([]Rule, len(ruleList))
+	for i, rule := range ruleList {
+		cleanRules[i] = CleanRuleForYAML(rule)
+	}
+	
+	ruleSet := RuleSet{
+		Rules: cleanRules,
 	}
 
 	dir := filepath.Dir(filePath)
@@ -92,14 +111,14 @@ func SaveRules(filePath string, ruleList []types.Rule) error {
 	return nil
 }
 
-func MergeRules(existing []types.Rule, newRules []types.Rule) []types.Rule {
+func MergeRules(existing []Rule, newRules []Rule) []Rule {
 	existingSet := make(map[string]bool)
 	for _, r := range existing {
 		sig := ruleSignature(r)
 		existingSet[sig] = true
 	}
 
-	result := make([]types.Rule, len(existing))
+	result := make([]Rule, len(existing))
 	copy(result, existing)
 
 	for _, r := range newRules {
@@ -113,7 +132,7 @@ func MergeRules(existing []types.Rule, newRules []types.Rule) []types.Rule {
 	return result
 }
 
-func ruleSignature(r types.Rule) string {
+func ruleSignature(r Rule) string {
 	return fmt.Sprintf("%s|%s|%s|%s|%d|%s",
 		r.Match.ProcessName,
 		r.Match.ParentName,
@@ -124,7 +143,7 @@ func ruleSignature(r types.Rule) string {
 	)
 }
 
-func ValidateRules(rules []types.Rule) []error {
+func ValidateRules(rules []Rule) []error {
 	var errs []error
 	for idx := range rules {
 		rule := rules[idx]
@@ -140,15 +159,15 @@ func ValidateRules(rules []types.Rule) []error {
 		}
 
 		switch rule.DeriveType() {
-		case types.RuleTypeExec:
+		case RuleTypeExec:
 			if !hasExecCondition(rule.Match) {
 				errs = append(errs, fmt.Errorf("%s: exec rules require process_name, parent_name, cgroup_id, pid, or ppid", displayName))
 			}
-		case types.RuleTypeFile:
+		case RuleTypeFile:
 			if strings.TrimSpace(rule.Match.Filename) == "" {
 				errs = append(errs, fmt.Errorf("%s: file rules require filename", displayName))
 			}
-		case types.RuleTypeConnect:
+		case RuleTypeConnect:
 			if rule.Match.DestPort == 0 && strings.TrimSpace(rule.Match.DestIP) == "" && strings.TrimSpace(rule.Match.ProcessName) == "" {
 				errs = append(errs, fmt.Errorf("%s: connect rules require dest_port, dest_ip, or process_name", displayName))
 			}
@@ -157,7 +176,7 @@ func ValidateRules(rules []types.Rule) []error {
 	return errs
 }
 
-func hasExecCondition(match types.MatchCondition) bool {
+func hasExecCondition(match MatchCondition) bool {
 	return strings.TrimSpace(match.ProcessName) != "" ||
 		strings.TrimSpace(match.ParentName) != "" ||
 		strings.TrimSpace(match.CgroupID) != "" ||
@@ -165,8 +184,8 @@ func hasExecCondition(match types.MatchCondition) bool {
 		match.PPID != 0
 }
 
-func isValidAction(action types.ActionType) bool {
-	return action == types.ActionAllow || action == types.ActionAlert || action == types.ActionBlock
+func isValidAction(action ActionType) bool {
+	return action == ActionAllow || action == ActionAlert || action == ActionBlock
 }
 
 func ruleDisplayName(name string, idx int) string {

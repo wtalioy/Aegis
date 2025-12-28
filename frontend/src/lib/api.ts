@@ -1,5 +1,7 @@
 // API Abstraction Layer for the web frontend
 
+const API_BASE = '/api'
+
 export interface SystemStats {
     processCount: number
     workloadCount: number
@@ -27,13 +29,6 @@ export interface EventRates {
     file: number
 }
 
-export interface ProcessInfo {
-    pid: number
-    ppid: number
-    comm: string
-    cgroupId: string
-    timestamp: number
-}
 
 export interface ExecEvent {
     type: 'exec'
@@ -70,20 +65,6 @@ export interface FileEvent {
     blocked?: boolean
 }
 
-export type StreamEvent = ExecEvent | ConnectEvent | FileEvent
-
-
-export interface LearningStatus {
-    active: boolean
-    startTime: number
-    duration: number
-    patternCount: number
-    execCount: number
-    fileCount: number
-    connectCount: number
-    remainingSeconds: number
-}
-
 // Unified Rule type - used for both detection rules and generated allow rules
 export interface Rule {
     name: string
@@ -91,6 +72,7 @@ export interface Rule {
     severity: string
     action: string // 'alert' or 'allow'
     type?: 'exec' | 'file' | 'connect' // May be derived on frontend if not provided
+    mode?: string // 'production', 'testing', 'draft'
     match?: Record<string, string>
     yaml: string
     selected?: boolean // For generated rules selection
@@ -99,27 +81,6 @@ export interface Rule {
 // Backward compatibility aliases
 export type DetectionRule = Rule
 export type GeneratedRule = Rule
-
-export interface ProbeStats {
-    id: string
-    name: string
-    tracepoint: string
-    active: boolean
-    eventsRate: number
-    totalCount: number
-}
-
-export interface Workload {
-    id: string
-    cgroupPath: string
-    execCount: number
-    fileCount: number
-    connectCount: number
-    alertCount: number
-    blockedCount: number
-    firstSeen: number
-    lastSeen: number
-}
 
 type EventCallback<T> = (data: T) => void
 type UnsubscribeFn = () => void
@@ -134,67 +95,49 @@ export async function getAlerts(): Promise<Alert[]> {
     return resp.json()
 }
 
-export async function getAncestors(pid: number): Promise<ProcessInfo[]> {
-    const resp = await fetch(`/api/ancestors/${pid}`)
-    return resp.json()
-}
 
 export async function getRules(): Promise<DetectionRule[]> {
     const resp = await fetch('/api/rules')
     return resp.json()
 }
 
-export async function getProbeStats(): Promise<ProbeStats[]> {
-    const resp = await fetch('/api/probes/stats')
-    return resp.json()
-}
-
-export async function getWorkloads(): Promise<Workload[]> {
-    const resp = await fetch('/api/workloads')
-    return resp.json()
-}
-
-export async function getWorkload(id: string): Promise<Workload | null> {
-    const resp = await fetch(`/api/workloads/${id}`)
-    if (!resp.ok) return null
-    return resp.json()
-}
-
-export async function getLearningStatus(): Promise<LearningStatus> {
-    const resp = await fetch('/api/learning/status')
-    return resp.json()
-}
-
-export async function startLearning(durationSec: number): Promise<void> {
-    const resp = await fetch('/api/learning/start', {
+export async function createRule(rule: DetectionRule, mode: 'testing' | 'production' = 'testing'): Promise<DetectionRule> {
+    const resp = await fetch('/api/rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ duration: durationSec })
+        body: JSON.stringify({ rule, mode })
     })
     if (!resp.ok) {
-        const text = await resp.text()
-        throw new Error(text || 'Failed to start learning')
+        const error = await resp.text()
+        throw new Error(`Failed to create rule: ${error || resp.statusText}`)
     }
+    const data = await resp.json()
+    return data.rule
 }
 
-export async function stopLearning(): Promise<GeneratedRule[]> {
-    const resp = await fetch('/api/learning/stop', { method: 'POST' })
-    if (!resp.ok) {
-        const text = await resp.text()
-        throw new Error(text || 'Failed to stop learning')
-    }
-    return resp.json()
-}
-
-export async function applyWhitelistRules(ruleIndices: number[]): Promise<void> {
-    const resp = await fetch('/api/learning/apply', {
-        method: 'POST',
+export async function updateRule(ruleName: string, rule: DetectionRule): Promise<DetectionRule> {
+    const encodedName = encodeURIComponent(ruleName)
+    const resp = await fetch(`/api/rules/${encodedName}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ indices: ruleIndices })
+        body: JSON.stringify({ rule })
     })
     if (!resp.ok) {
-        const text = await resp.text()
-        throw new Error(text || 'Failed to apply rules')
+        const error = await resp.text()
+        throw new Error(`Failed to update rule: ${error || resp.statusText}`)
+    }
+    const data = await resp.json()
+    return data.rule
+}
+
+export async function deleteRule(ruleName: string): Promise<void> {
+    const encodedName = encodeURIComponent(ruleName)
+    const resp = await fetch(`/api/rules/${encodedName}`, {
+        method: 'DELETE'
+    })
+    if (!resp.ok) {
+        const error = await resp.text()
+        throw new Error(`Failed to delete rule: ${error || resp.statusText}`)
     }
 }
 
@@ -238,41 +181,15 @@ export function subscribeToAlerts(callback: EventCallback<Alert[]>): Unsubscribe
     }
 }
 
-export function subscribeToAllEvents(callback: EventCallback<StreamEvent>): UnsubscribeFn {
-    const eventSource = new EventSource('/api/stream')
-
-    eventSource.onmessage = (event) => {
-        try {
-            callback(JSON.parse(event.data))
-        } catch (e) {
-            console.error('Failed to parse SSE event:', e)
-        }
-    }
-
-    return () => eventSource.close()
-}
-
-// Subscribe to rules reload events
-export function subscribeToRulesReload(callback: () => void): UnsubscribeFn {
-    // back-end emits a dedicated SSE event to signal reloads
-    const eventSource = new EventSource('/api/stream')
-
-    eventSource.addEventListener('rules:reload', () => {
-        callback()
-    })
-
-    return () => eventSource.close()
-}
 
 // ============================================
 // AI Types
 // ============================================
 
 export interface AIStatus {
-    enabled: boolean
     provider: string
     isLocal: boolean
-    status: 'ready' | 'unavailable' | 'disabled'
+    status: 'ready' | 'unavailable'
 }
 
 export interface DiagnosisResult {
@@ -454,3 +371,78 @@ export async function clearChatHistory(sessionId: string): Promise<void> {
         }
     }
 }
+
+// Settings API
+export interface AISettings {
+    mode: 'ollama' | 'openai'
+    ollama: {
+        endpoint: string
+        model: string
+        timeout: number
+    }
+    openai: {
+        endpoint: string
+        apiKey: string
+        model: string
+        timeout: number
+    }
+}
+
+export interface Settings {
+    ai: AISettings
+}
+
+export async function getSettings(): Promise<Settings> {
+    const resp = await fetch(`${API_BASE}/settings`)
+    if (!resp.ok) {
+        throw new Error('Failed to load settings')
+    }
+    return resp.json()
+}
+
+export async function updateSettings(settings: Settings): Promise<void> {
+    const resp = await fetch(`${API_BASE}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+    })
+    if (!resp.ok) {
+        const error = await resp.json().catch(() => ({ error: 'Failed to update settings' }))
+        throw new Error(error.error || 'Failed to update settings')
+    }
+}
+
+// ============================================
+// Rule Validation API (NEW)
+// ============================================
+
+export async function getRuleValidation(ruleId: string) {
+    const response = await fetch(`${API_BASE}/rules/validation/${ruleId}`)
+    if (!response.ok) throw new Error('Failed to get rule validation')
+    return response.json()
+}
+
+export async function getTestingRules() {
+    const response = await fetch(`${API_BASE}/rules/testing`)
+    if (!response.ok) throw new Error('Failed to get testing rules')
+    return response.json()
+}
+
+export async function promoteRule(ruleId: string) {
+    const response = await fetch(`${API_BASE}/rules/validation/${ruleId}/promote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    if (!response.ok) throw new Error('Failed to promote rule')
+    return response.json()
+}
+
+export async function demoteRule(ruleId: string) {
+    const response = await fetch(`${API_BASE}/rules/validation/${ruleId}/demote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    if (!response.ok) throw new Error('Failed to demote rule')
+    return response.json()
+}
+

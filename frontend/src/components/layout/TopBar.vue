@@ -1,22 +1,19 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Zap } from 'lucide-vue-next'
+import { Zap, Sparkles } from 'lucide-vue-next'
 import { getAIStatus, type AIStatus } from '../../lib/api'
 import DiagnosisModal from '../ai/DiagnosisModal.vue'
-
-const probeStatus = ref<'active' | 'error' | 'starting'>('starting')
+import AIOmnibox from '../ai/AIOmnibox.vue'
+import { useOmnibox } from '../../composables/useOmnibox'
 
 // AI state
 const aiStatus = ref<AIStatus | null>(null)
 const showDiagnosisModal = ref(false)
 
+// Omnibox
+const { toggle: toggleOmnibox } = useOmnibox()
+
 onMounted(async () => {
-  setTimeout(() => {
-    if (probeStatus.value === 'starting') {
-      probeStatus.value = 'active'
-    }
-  }, 2000)
-  
   // Fetch AI status
   try {
     aiStatus.value = await getAIStatus()
@@ -29,39 +26,34 @@ onMounted(async () => {
 <template>
   <header class="topbar">
     <div class="topbar-left">
-      <div class="status-indicator" :class="probeStatus">
-        <span class="pulse-ring"></span>
-        <span class="status-dot"></span>
-        <span class="status-text">
-          {{ probeStatus === 'active' ? 'Probes Active' : probeStatus === 'error' ? 'Probe Error' : 'Starting...' }}
-        </span>
-      </div>
+      <!-- Left side empty for now -->
     </div>
 
     <div class="topbar-center">
-      <!-- Rate display removed -->
+      <!-- AI Omnibox Trigger - Prominent and Centered -->
+      <button v-if="aiStatus?.status === 'ready'" class="omnibox-trigger prominent" @click="toggleOmnibox"
+        title="Open AI Omnibox (Cmd/Ctrl+K)">
+        <Sparkles :size="18" />
+        <span>Ask Aegis anything...</span>
+        <kbd>Cmd/Ctrl+K</kbd>
+      </button>
     </div>
 
     <div class="topbar-right">
       <!-- Quick Diagnose Button -->
-      <button 
-        v-if="aiStatus?.enabled"
-        class="diagnose-btn" 
-        @click="showDiagnosisModal = true"
-        :disabled="aiStatus.status !== 'ready'"
-        title="Quick one-click system diagnosis"
-      >
+      <button v-if="aiStatus?.status === 'ready'" class="diagnose-btn" @click="showDiagnosisModal = true"
+        :disabled="aiStatus.status !== 'ready'" title="Quick one-click system diagnosis">
         <Zap :size="15" />
         <span>Quick Diagnose</span>
       </button>
     </div>
   </header>
-  
+
   <!-- Quick Diagnosis Modal -->
-  <DiagnosisModal 
-    :visible="showDiagnosisModal" 
-    @close="showDiagnosisModal = false"
-  />
+  <DiagnosisModal :visible="showDiagnosisModal" @close="showDiagnosisModal = false" />
+
+  <!-- AI Omnibox -->
+  <AIOmnibox />
 </template>
 
 <style scoped>
@@ -83,62 +75,12 @@ onMounted(async () => {
 }
 
 .topbar-center {
+  flex: 1;
   display: flex;
   align-items: center;
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  position: relative;
-}
-
-.pulse-ring {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  opacity: 0;
-}
-
-.status-indicator.active .pulse-ring {
-  background: var(--status-safe);
-  animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
-}
-
-.status-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  position: relative;
-  z-index: 1;
-}
-
-.status-indicator.active .status-dot {
-  background: var(--status-safe);
-  box-shadow: var(--glow-safe);
-}
-
-.status-indicator.error .status-dot {
-  background: var(--status-critical);
-  box-shadow: var(--glow-critical);
-}
-
-.status-indicator.starting .status-dot {
-  background: var(--status-warning);
-  animation: blink 1s ease-in-out infinite;
-}
-
-.status-text {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.status-indicator.active .status-text {
-  color: var(--status-safe);
+  justify-content: center;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
 .diagnose-btn {
@@ -167,27 +109,60 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
-@keyframes pulse-ring {
-  0% {
-    transform: scale(0.5);
-    opacity: 0.8;
-  }
-
-  100% {
-    transform: scale(2);
-    opacity: 0;
-  }
+.omnibox-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-@keyframes blink {
+.omnibox-trigger.prominent {
+  width: 100%;
+  max-width: 500px;
+  padding: 10px 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+  justify-content: flex-start;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
 
-  0%,
-  100% {
-    opacity: 1;
-  }
+.omnibox-trigger:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
 
-  50% {
-    opacity: 0.4;
-  }
+.omnibox-trigger.prominent:hover {
+  background: var(--bg-elevated);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.omnibox-trigger.prominent span {
+  flex: 1;
+  text-align: left;
+  color: var(--text-muted);
+}
+
+.omnibox-trigger.prominent:hover span {
+  color: var(--text-primary);
+}
+
+.omnibox-trigger kbd {
+  padding: 2px 6px;
+  background: var(--bg-void);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--text-muted);
 }
 </style>

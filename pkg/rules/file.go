@@ -5,8 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"eulerguard/pkg/types"
-	"eulerguard/pkg/utils"
+	"aegis/pkg/utils"
 )
 
 type fileEvent struct {
@@ -26,19 +25,19 @@ func (e fileEvent) hasExactPath(target string) bool {
 
 type pathPrefixBucket struct {
 	prefix string
-	rules  []*types.Rule
+	rules  []*Rule
 }
 
 type fileMatcher struct {
-	inodeRules map[types.InodeKey][]*types.Rule
-	pathRules  map[string][]*types.Rule
+	inodeRules map[InodeKey][]*Rule
+	pathRules  map[string][]*Rule
 	prefixes   []pathPrefixBucket
 }
 
-func newFileMatcher(rules []types.Rule) *fileMatcher {
+func newFileMatcher(rules []Rule) *fileMatcher {
 	matcher := &fileMatcher{
-		inodeRules: make(map[types.InodeKey][]*types.Rule),
-		pathRules:  make(map[string][]*types.Rule),
+		inodeRules: make(map[InodeKey][]*Rule),
+		pathRules:  make(map[string][]*Rule),
 		prefixes:   make([]pathPrefixBucket, 0),
 	}
 
@@ -71,7 +70,7 @@ func newFileMatcher(rules []types.Rule) *fileMatcher {
 					prefixIndex[prefix] = len(matcher.prefixes)
 					matcher.prefixes = append(matcher.prefixes, pathPrefixBucket{
 						prefix: prefix,
-						rules:  []*types.Rule{rule},
+						rules:  []*Rule{rule},
 					})
 				}
 			}
@@ -85,7 +84,7 @@ func newFileMatcher(rules []types.Rule) *fileMatcher {
 	return matcher
 }
 
-func (m *fileMatcher) Match(ino, dev uint64, filename string, pid uint32, cgroupID uint64) (matched bool, rule *types.Rule, allowed bool) {
+func (m *fileMatcher) Match(ino, dev uint64, filename string, pid uint32, cgroupID uint64) (matched bool, rule *Rule, allowed bool) {
 	if m == nil {
 		return false, nil, false
 	}
@@ -104,7 +103,7 @@ func (m *fileMatcher) Match(ino, dev uint64, filename string, pid uint32, cgroup
 		cgroupID:     cgroupID,
 	}
 
-	if rules := m.inodeRules[types.InodeKey{Ino: ino, Dev: dev}]; len(rules) > 0 {
+	if rules := m.inodeRules[InodeKey{Ino: ino, Dev: dev}]; len(rules) > 0 {
 		inodeEvent := event
 		inodeEvent.matchedByInode = true
 		if matched, rule, allowed := filterRulesByAction(rules, m.matchRule, inodeEvent); matched {
@@ -140,19 +139,24 @@ func (m *fileMatcher) Match(ino, dev uint64, filename string, pid uint32, cgroup
 	return false, nil, false
 }
 
-func (m *fileMatcher) matchRule(rule *types.Rule, event fileEvent) bool {
+func (m *fileMatcher) matchRule(rule *Rule, event fileEvent) bool {
 	match := rule.Match
 	if match.Filename == "" && len(match.PrefixPathKeys()) == 0 {
 		return false
 	}
 
+	// 1) Exact path keys (skip if matched by inode already)
 	if len(match.ExactPathKeys()) > 0 && !event.matchedByInode {
 		found := slices.ContainsFunc(match.ExactPathKeys(), event.hasExactPath)
-		if !found {
+		// If keys include directory components (slash), require exact-variant match.
+		// If keys are all basenames, allow fallback to basename matching below.
+		hasSlashKey := slices.ContainsFunc(match.ExactPathKeys(), func(s string) bool { return strings.Contains(s, "/") })
+		if !found && hasSlashKey {
 			return false
 		}
 	}
 
+	// 2) Prefix directory keys
 	if len(match.PrefixPathKeys()) > 0 {
 		found := false
 		for _, prefix := range match.PrefixPathKeys() {
@@ -177,7 +181,66 @@ func (m *fileMatcher) matchRule(rule *types.Rule, event fileEvent) bool {
 		}
 	}
 
+	// 3) If exact keys are bare filenames (no slash), allow basename matching.
+	if len(match.ExactPathKeys()) > 0 {
+		allBasenames := true
+		for _, k := range match.ExactPathKeys() {
+			if strings.Contains(k, "/") {
+				allBasenames = false
+				break
+			}
+		}
+		if allBasenames {
+			baseMatch := false
+			for _, variant := range event.pathVariants {
+				if variant == "" {
+					continue
+				}
+				vk := pathBase(variant)
+				for _, key := range match.ExactPathKeys() {
+					if vk == key {
+						baseMatch = true
+						break
+					}
+				}
+				if baseMatch {
+					break
+				}
+			}
+			// Also check raw filename
+			if !baseMatch {
+				vk := pathBase(event.filename)
+				for _, key := range match.ExactPathKeys() {
+					if vk == key {
+						baseMatch = true
+						break
+					}
+				}
+			}
+			if !baseMatch {
+				return false
+			}
+		}
+	}
+
 	return matchCgroupID(match.CgroupID, event.cgroupID) && matchPID(match.PID, event.pid)
+}
+
+// pathBase is a minimal, allocation-free base path extractor for both absolute and relative paths.
+func pathBase(p string) string {
+	if p == "" {
+		return ""
+	}
+	// Find last slash
+	for i := len(p) - 1; i >= 0; i-- {
+		if p[i] == '/' {
+			if i == len(p)-1 {
+				return ""
+			}
+			return p[i+1:]
+		}
+	}
+	return p
 }
 
 func ensureTrailingSlash(path string) string {

@@ -1,10 +1,10 @@
-# EulerGuard Build System
+# Aegis Build System
 BPF_SRC = ./bpf/main.bpf.c
 BPF_OBJ = ./bpf/main.bpf.o
 VMLINUX = ./bpf/vmlinux.h
 BUILD   = ./build
 
-all: cli
+all: web
 
 # eBPF
 bpf: $(VMLINUX)
@@ -21,37 +21,28 @@ frontend:
 	@cd frontend && npm install && npm run build
 
 # Builds
-cli: bpf
-	@echo "==> Building CLI..."
-	@mkdir -p $(BUILD)
-	@go build -o $(BUILD)/eulerguard ./cmd
-
 web: bpf frontend
 	@echo "==> Building Web Server..."
 	@mkdir -p $(BUILD)
 	@cp -r frontend cmd/
-	@go build -tags web -o $(BUILD)/eulerguard-web ./cmd
+	@go build -tags web -o $(BUILD)/aegis-web ./cmd
 	@rm -rf cmd/frontend
 
 # Run
-run-cli: cli
-	@sudo $(BUILD)/eulerguard
-
-run-web: web
+run: web
 	@echo "Open http://localhost:3000"
-	@sudo $(BUILD)/eulerguard-web
+	@sudo $(BUILD)/aegis-web
 
 # 
 clean:
-	@rm -f $(BPF_OBJ) $(BUILD)/eulerguard $(BUILD)/eulerguard-web
+	@rm -f $(BPF_OBJ) $(BUILD)/aegis-web
 	@rm -rf $(BUILD)/bin cmd/frontend cmd/build
 
 clean-all: clean
 	@rm -rf ./frontend/node_modules ./frontend/dist
 
 help:
-	@echo "make cli     - CLI (no frontend)"
 	@echo "make web     - Web server (:3000)"
-	@echo "make run-*   - Build and run (sudo)"
+	@echo "make run     - Build and run (sudo)"
 
-.PHONY: all bpf frontend cli web dev run-cli run-web clean clean-all help
+.PHONY: all bpf frontend web dev run clean clean-all help

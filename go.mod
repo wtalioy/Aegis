@@ -1,4 +1,4 @@
-module eulerguard
+module aegis
 
 go 1.24.0
 

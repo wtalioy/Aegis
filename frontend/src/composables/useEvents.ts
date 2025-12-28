@@ -30,11 +30,11 @@ export interface FileEvent {
     filename: string
 }
 
-export type EulerGuardEvent = ExecEvent | ConnectEvent | FileEvent
+export type AegisEvent = ExecEvent | ConnectEvent | FileEvent
 export { EventRates }
 
 export function useEvents(maxBufferSize = 1000) {
-    const events = ref<EulerGuardEvent[]>([])
+    const events = ref<AegisEvent[]>([])
     const eventRate = ref<EventRates>({ exec: 0, network: 0, file: 0 })
     const isPaused = ref(false)
     const totalEvents = ref({ exec: 0, network: 0, file: 0 })

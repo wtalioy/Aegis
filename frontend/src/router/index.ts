@@ -1,48 +1,41 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import Dashboard from '../pages/Dashboard.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     {
+      path: '/observatory',
+      name: 'observatory',
+      component: () => import('../pages/Observatory.vue')
+    },
+    {
       path: '/',
-      name: 'dashboard',
-      component: Dashboard
+      redirect: '/observatory'
     },
     {
-      path: '/stream',
-      name: 'stream',
-      component: () => import('../pages/LiveStream.vue')
+      path: '/sentinel',
+      name: 'sentinel',
+      component: () => import('../pages/Sentinel.vue')
     },
     {
-      path: '/alerts',
-      name: 'alerts',
-      component: () => import('../pages/Alerts.vue')
+      path: '/policy-studio',
+      name: 'policy-studio',
+      component: () => import('../pages/PolicyStudio.vue')
     },
     {
-      path: '/rules',
-      name: 'rules',
-      component: () => import('../pages/Rules.vue')
+      path: '/investigation',
+      name: 'investigation',
+      component: () => import('../pages/Investigation.vue')
     },
     {
-      path: '/workloads',
-      name: 'workloads',
-      component: () => import('../pages/Workloads.vue')
+      path: '/settings',
+      name: 'settings',
+      component: () => import('../pages/Settings.vue')
     },
     {
-      path: '/profiler',
-      name: 'profiler',
-      component: () => import('../pages/Profiler.vue')
-    },
-    {
-      path: '/kernel',
-      name: 'kernel',
-      component: () => import('../pages/KernelXRay.vue')
-    },
-    {
-      path: '/ai',
-      name: 'ai',
-      component: () => import('../pages/AIChat.vue')
+      path: '/rule-validation',
+      name: 'rule-validation',
+      component: () => import('../pages/RuleValidation.vue')
     }
   ]
 })

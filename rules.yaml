@@ -1,7 +1,4 @@
 rules:
-  # ============================================
-  # Execution Rules (exec)
-  # ============================================
   - name: Reverse Shell Pattern
     description: Bash spawned by network service may indicate reverse shell
     severity: warning
@@ -12,6 +9,7 @@ rules:
       parent_name_type: contains
     action: alert
     type: exec
+    state: production
   - name: Shell from Web Server
     description: Shell execution from web server process
     severity: warning
@@ -22,6 +20,7 @@ rules:
       parent_name_type: contains
     action: alert
     type: exec
+    state: production
   - name: Shell from Nginx
     description: Shell execution from nginx process
     severity: warning
@@ -32,12 +31,7 @@ rules:
       parent_name_type: contains
     action: alert
     type: exec
-
-  # ============================================
-  # File Access Rules (file)
-  # `filename` accepts absolute paths, relative paths,
-  # or simple wildcards such as "logs/*".
-  # ============================================
+    state: production
   - name: Block Password File
     description: Notify on access to /etc/shadow
     severity: info
@@ -45,6 +39,7 @@ rules:
       filename: /etc/shadow
     action: alert
     type: file
+    state: production
   - name: Monitor Project Docs
     description: Alert on reads inside docs/
     severity: warning
@@ -52,6 +47,7 @@ rules:
       filename: docs/*
     action: alert
     type: file
+    state: production
   - name: Block Makefile
     description: Block access to Makefile
     severity: warning
@@ -59,12 +55,7 @@ rules:
       filename: Makefile
     action: block
     type: file
-
-  # ============================================
-  # Network Connection Rules (connect)
-  # action: block - actively blocks connections
-  # action: alert - only monitors and alerts
-  # ============================================
+    state: testing
   - name: Block Reverse Shell Port
     description: Block connections to port 4444 (common reverse shell port)
     severity: critical
@@ -72,6 +63,7 @@ rules:
       dest_port: 4444
     action: block
     type: connect
+    state: production
   - name: Monitor C2 Port
     description: Monitor connections to port 8080 (commonly used for C2)
     severity: warning
@@ -79,3 +71,4 @@ rules:
       dest_port: 8080
     action: alert
     type: connect
+    state: production
