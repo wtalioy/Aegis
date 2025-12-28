@@ -20,15 +20,15 @@ type LSMObjects struct {
 }
 
 func LoadLSMObjects(objPath string, ringBufSize int) (*LSMObjects, error) {
-	absPath, err := filepath.Abs(objPath)
+	abspath, err := filepath.Abs(objPath)
 	if err != nil {
 		return nil, fmt.Errorf("resolve bpf path: %w", err)
 	}
-	if _, err := os.Stat(absPath); err != nil {
+	if _, err := os.Stat(abspath); err != nil {
 		return nil, fmt.Errorf("stat bpf object: %w", err)
 	}
 
-	spec, err := ebpf.LoadCollectionSpec(absPath)
+	spec, err := ebpf.LoadCollectionSpec(abspath)
 	if err != nil {
 		return nil, fmt.Errorf("load collection spec: %w", err)
 	}
@@ -54,37 +54,36 @@ func (o *LSMObjects) Close() error {
 
 	var firstErr error
 
-	if o.LsmBprmCheck != nil {
-		if err := o.LsmBprmCheck.Close(); err != nil {
-			firstErr = fmt.Errorf("close lsm_bprm_check: %w", err)
-		}
-	}
-	if o.LsmFileOpen != nil {
-		if err := o.LsmFileOpen.Close(); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("close lsm_file_open: %w", err)
-		}
-	}
-	if o.LsmSocketConnect != nil {
-		if err := o.LsmSocketConnect.Close(); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("close lsm_socket_connect: %w", err)
-		}
-	}
+	// Close programs
+	firstErr = closeProgram("lsm_bprm_check", o.LsmBprmCheck, firstErr)
+	firstErr = closeProgram("lsm_file_open", o.LsmFileOpen, firstErr)
+	firstErr = closeProgram("lsm_socket_connect", o.LsmSocketConnect, firstErr)
 
-	if o.Events != nil {
-		if err := o.Events.Close(); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("close events map: %w", err)
-		}
-	}
-	if o.MonitoredFiles != nil {
-		if err := o.MonitoredFiles.Close(); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("close monitored_files map: %w", err)
-		}
-	}
-	if o.BlockedPorts != nil {
-		if err := o.BlockedPorts.Close(); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("close blocked_ports map: %w", err)
-		}
-	}
+	// Close maps
+	firstErr = closeMap("events", o.Events, firstErr)
+	firstErr = closeMap("monitored_files", o.MonitoredFiles, firstErr)
+	firstErr = closeMap("blocked_ports", o.BlockedPorts, firstErr)
+	firstErr = closeMap("pid_to_ppid", o.PidToPpid, firstErr)
 
 	return firstErr
+}
+
+func closeProgram(name string, p *ebpf.Program, err error) error {
+	if p == nil {
+		return err
+	}
+	if cerr := p.Close(); cerr != nil && err == nil {
+		return fmt.Errorf("close %s: %w", name, cerr)
+	}
+	return err
+}
+
+func closeMap(name string, m *ebpf.Map, err error) error {
+	if m == nil {
+		return err
+	}
+	if cerr := m.Close(); cerr != nil && err == nil {
+		return fmt.Errorf("close %s: %w", name, cerr)
+	}
+	return err
 }

@@ -4,39 +4,38 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 )
 
+type lsmHook struct {
+	name    string
+	program **ebpf.Program
+}
+
 func AttachLSMHooks(objs *LSMObjects) ([]link.Link, error) {
+	hooks := []lsmHook{
+		{"bprm_check_security", &objs.LsmBprmCheck},
+		{"file_open", &objs.LsmFileOpen},
+		{"socket_connect", &objs.LsmSocketConnect},
+	}
+
 	var links []link.Link
-
-	lsmBprm, err := link.AttachLSM(link.LSMOptions{
-		Program: objs.LsmBprmCheck,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("attach bprm_check_security LSM: %w", err)
+	for _, h := range hooks {
+		if *h.program == nil {
+			continue
+		}
+		l, err := link.AttachLSM(link.LSMOptions{
+			Program: *h.program,
+		})
+		if err != nil {
+			CloseLinks(links)
+			return nil, fmt.Errorf("attach %s LSM: %w", h.name, err)
+		}
+		links = append(links, l)
 	}
-	links = append(links, lsmBprm)
 
-	lsmFileOpen, err := link.AttachLSM(link.LSMOptions{
-		Program: objs.LsmFileOpen,
-	})
-	if err != nil {
-		CloseLinks(links)
-		return nil, fmt.Errorf("attach file_open LSM: %w", err)
-	}
-	links = append(links, lsmFileOpen)
-
-	lsmSocketConnect, err := link.AttachLSM(link.LSMOptions{
-		Program: objs.LsmSocketConnect,
-	})
-	if err != nil {
-		CloseLinks(links)
-		return nil, fmt.Errorf("attach socket_connect LSM: %w", err)
-	}
-	links = append(links, lsmSocketConnect)
-
-	log.Printf("Attached 3 BPF LSM hooks for active defense")
+	log.Printf("Attached %d BPF LSM hooks for active defense", len(links))
 	return links, nil
 }
 

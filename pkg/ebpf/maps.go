@@ -11,7 +11,6 @@ import (
 	"github.com/cilium/ebpf"
 )
 
-// PopulateMonitoredFiles populates the monitored_files BPF map from rules.
 func PopulateMonitoredFiles(bpfMap *ebpf.Map, ruleList []rules.Rule, rulesPath string) error {
 	if bpfMap == nil {
 		return fmt.Errorf("monitored_files map is nil")
@@ -19,7 +18,6 @@ func PopulateMonitoredFiles(bpfMap *ebpf.Map, ruleList []rules.Rule, rulesPath s
 
 	fileActions := make(map[string]uint8)
 	for _, rule := range ruleList {
-		// Only include active rules (testing or production), exclude draft rules
 		if !rule.IsActive() {
 			continue
 		}
@@ -35,24 +33,8 @@ func PopulateMonitoredFiles(bpfMap *ebpf.Map, ruleList []rules.Rule, rulesPath s
 				continue
 			}
 
-			var action uint8
-			// Testing rules should always use monitor action (don't block)
-			// Production rules use block or monitor based on their action
-			if rule.IsTesting() {
-				action = rules.BPFActionMonitor // Always monitor for testing rules
-			} else if rule.Action == rules.ActionBlock {
-				action = rules.BPFActionBlock
-			} else {
-				action = rules.BPFActionMonitor
-			}
-
-			// For testing rules, use monitor even if a production rule wants to block
-			// (testing takes precedence - we want to observe, not block)
-			if existing, ok := fileActions[key]; !ok || (rule.IsTesting() && existing == rules.BPFActionBlock) {
-				fileActions[key] = action
-			} else if !rule.IsTesting() && action > existing {
-				fileActions[key] = action
-			}
+			action := bpfActionForRule(rule)
+			fileActions[key] = mergeAction(fileActions[key], action)
 		}
 	}
 
@@ -82,29 +64,16 @@ func PopulateMonitoredFiles(bpfMap *ebpf.Map, ruleList []rules.Rule, rulesPath s
 	return nil
 }
 
-// RepopulateMonitoredFiles clears and repopulates the monitored_files BPF map.
 func RepopulateMonitoredFiles(bpfMap *ebpf.Map, ruleList []rules.Rule, rulesPath string) error {
 	if bpfMap == nil {
 		return fmt.Errorf("monitored_files map is nil")
 	}
-
-	var key [events.PathMaxLen]byte
-	var val uint8
-	iter := bpfMap.Iterate()
-	keysToDelete := make([][]byte, 0)
-	for iter.Next(&key, &val) {
-		keyCopy := make([]byte, events.PathMaxLen)
-		copy(keyCopy, key[:])
-		keysToDelete = append(keysToDelete, keyCopy)
+	if err := clearMonitoredFilesMap(bpfMap); err != nil {
+		return err
 	}
-	for _, k := range keysToDelete {
-		_ = bpfMap.Delete(k)
-	}
-
 	return PopulateMonitoredFiles(bpfMap, ruleList, rulesPath)
 }
 
-// PopulateBlockedPorts populates the blocked_ports BPF map from rules.
 func PopulateBlockedPorts(bpfMap *ebpf.Map, ruleList []rules.Rule) error {
 	if bpfMap == nil {
 		return fmt.Errorf("blocked_ports map is nil")
@@ -112,7 +81,6 @@ func PopulateBlockedPorts(bpfMap *ebpf.Map, ruleList []rules.Rule) error {
 
 	portActions := make(map[uint16]uint8)
 	for _, rule := range ruleList {
-		// Only include active rules (testing or production), exclude draft rules
 		if !rule.IsActive() {
 			continue
 		}
@@ -121,25 +89,9 @@ func PopulateBlockedPorts(bpfMap *ebpf.Map, ruleList []rules.Rule) error {
 			continue
 		}
 
-		var action uint8
-		// Testing rules should always use monitor action (don't block)
-		// Production rules use block or monitor based on their action
-		if rule.IsTesting() {
-			action = rules.BPFActionMonitor // Always monitor for testing rules
-		} else if rule.Action == rules.ActionBlock {
-			action = rules.BPFActionBlock
-		} else {
-			action = rules.BPFActionMonitor
-		}
-
+		action := bpfActionForRule(rule)
 		port := rule.Match.DestPort
-		// For testing rules, use monitor even if a production rule wants to block
-		// (testing takes precedence - we want to observe, not block)
-		if existing, ok := portActions[port]; !ok || (rule.IsTesting() && existing == rules.BPFActionBlock) {
-			portActions[port] = action
-		} else if !rule.IsTesting() && action > existing {
-			portActions[port] = action
-		}
+		portActions[port] = mergeAction(portActions[port], action)
 	}
 
 	if len(portActions) == 0 {
@@ -164,12 +116,50 @@ func PopulateBlockedPorts(bpfMap *ebpf.Map, ruleList []rules.Rule) error {
 	return nil
 }
 
-// RepopulateBlockedPorts clears and repopulates the blocked_ports BPF map.
 func RepopulateBlockedPorts(bpfMap *ebpf.Map, ruleList []rules.Rule) error {
 	if bpfMap == nil {
 		return fmt.Errorf("blocked_ports map is nil")
 	}
+	if err := clearBlockedPortsMap(bpfMap); err != nil {
+		return err
+	}
+	return PopulateBlockedPorts(bpfMap, ruleList)
+}
 
+func bpfActionForRule(rule rules.Rule) uint8 {
+	if rule.IsTesting() {
+		return rules.BPFActionMonitor
+	}
+	if rule.Action == rules.ActionBlock {
+		return rules.BPFActionBlock
+	}
+	return rules.BPFActionMonitor
+}
+
+func mergeAction(existing, proposed uint8) uint8 {
+	if proposed > existing {
+		return proposed
+	}
+	return existing
+}
+
+func clearMonitoredFilesMap(bpfMap *ebpf.Map) error {
+	var key [events.PathMaxLen]byte
+	var val uint8
+	iter := bpfMap.Iterate()
+	keysToDelete := make([][]byte, 0)
+	for iter.Next(&key, &val) {
+		keyCopy := make([]byte, events.PathMaxLen)
+		copy(keyCopy, key[:])
+		keysToDelete = append(keysToDelete, keyCopy)
+	}
+	for _, k := range keysToDelete {
+		_ = bpfMap.Delete(k)
+	}
+	return nil
+}
+
+func clearBlockedPortsMap(bpfMap *ebpf.Map) error {
 	var key uint16
 	var val uint8
 	iter := bpfMap.Iterate()
@@ -180,11 +170,9 @@ func RepopulateBlockedPorts(bpfMap *ebpf.Map, ruleList []rules.Rule) error {
 	for _, k := range keysToDelete {
 		_ = bpfMap.Delete(k)
 	}
-
-	return PopulateBlockedPorts(bpfMap, ruleList)
+	return nil
 }
 
-// extractParentFilename extracts the parent/filename format from a full path.
 func extractParentFilename(path string) string {
 	for len(path) > 0 && path[0] == '/' {
 		path = path[1:]

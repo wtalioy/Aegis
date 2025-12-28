@@ -13,8 +13,8 @@ type Engine struct {
 }
 
 func NewEngine(rules []Rule) *Engine {
-	// Separate active rules (testing/production) from draft rules
-	// Draft rules should not be included in matchers
+	// Separate active rules (testing/production) from draft rules.
+	// Draft rules should not be included in matchers.
 	var activeRules []Rule
 	for i := range rules {
 		rules[i].Match.Prepare()
