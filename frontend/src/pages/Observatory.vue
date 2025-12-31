@@ -70,7 +70,7 @@ const threats = computed(() => {
   }
 
   // Group alerts by type/severity
-  const threatMap = new Map<string, { count: number; severity: string; description: string }>()
+  const threatMap = new Map<string, { count: number; severity: string; description: string; ruleName: string }>()
 
   alerts.value.forEach(alert => {
     const key = `${alert.severity}-${alert.ruleName}`
@@ -78,7 +78,8 @@ const threats = computed(() => {
       threatMap.set(key, {
         count: 0,
         severity: alert.severity,
-        description: alert.description || `Alert from rule: ${alert.ruleName}`
+        description: alert.description || `Alert from rule: ${alert.ruleName}`,
+        ruleName: alert.ruleName
       })
     }
     threatMap.get(key)!.count++
@@ -93,7 +94,8 @@ const threats = computed(() => {
       data.severity === 'high' ? 'high' :
         data.severity === 'warning' ? 'medium' : 'low') as 'critical' | 'high' | 'medium' | 'low',
     count: data.count,
-    description: data.description
+    description: data.description,
+    ruleName: data.ruleName
   }))
 
   // Sort by severity (critical > high > medium > low)
@@ -104,20 +106,31 @@ const threats = computed(() => {
 })
 
 // Calculate defense stats from real data
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+
+const handleThreatClick = (threat: any) => {
+  if (threat.ruleName) {
+    router.push({ name: 'investigation', query: { search: threat.ruleName } })
+  }
+}
+
+// Calculate defense stats from real data
 const defenseStats = computed(() => {
   const totalBlocks = alerts.value.filter(a => a.blocked).length
-  const totalAlerts = alerts.value.length
+  const highSeverityAlerts = alerts.value.filter(a => a.severity === 'high' || a.severity === 'critical').length
   const activeRules = rules.value.filter(r => (r as any).state === 'production' || (r as any).state === 'testing').length
   const testingRules = rules.value.filter(r => (r as any).state === 'testing').length
 
-  // Calculate defense rate: (blocks / total alerts) * 100, or 100 if no alerts
-  const defenseRate = totalAlerts > 0
-    ? Math.round((totalBlocks / totalAlerts) * 100)
+  // Defense rate: considers blocks against high-severity threats
+  const defenseRate = highSeverityAlerts > 0
+    ? Math.round((totalBlocks / highSeverityAlerts) * 100)
     : 100
 
   return {
     totalBlocks,
-    totalAlerts,
+    totalAlerts: alerts.value.length,
     activeRules,
     testingRules,
     defenseRate
@@ -164,7 +177,7 @@ onMounted(async () => {
 
       <div class="main-grid">
         <div class="threat-section">
-          <AIThreatSummary :threats="threats" :ai-summary="aiAssessment" />
+          <AIThreatSummary :threats="threats" :ai-summary="aiAssessment" @threat-click="handleThreatClick" />
         </div>
         <div class="defense-section">
           <DefenseStats :stats="defenseStats" trend="stable" />
@@ -203,18 +216,22 @@ onMounted(async () => {
 
 <style scoped>
 .observatory-page {
-  padding: 32px; /* Increased padding for more space */
+  padding: 32px;
+  /* Increased padding for more space */
   max-width: 1400px;
   margin: 0 auto;
 }
 
 .page-header {
-  margin-bottom: 40px; /* Increased margin */
+  margin-bottom: 40px;
+  /* Increased margin */
 }
 
 .page-header h1 {
-  font-size: 28px; /* Softened font size */
-  font-weight: 600; /* Softened font weight */
+  font-size: 28px;
+  /* Softened font size */
+  font-weight: 600;
+  /* Softened font weight */
   color: var(--text-primary);
   margin: 0 0 8px 0;
 }
@@ -226,14 +243,17 @@ onMounted(async () => {
 }
 
 .health-section {
-  margin-bottom: 40px; /* Increased margin */
+  margin-bottom: 40px;
+  /* Increased margin */
 }
 
 .main-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 32px; /* Increased gap */
-  margin-bottom: 40px; /* Increased margin */
+  gap: 32px;
+  /* Increased gap */
+  margin-bottom: 40px;
+  /* Increased margin */
   align-items: stretch;
 }
 
@@ -243,21 +263,23 @@ onMounted(async () => {
   height: 100%;
 }
 
-.threat-section > *,
-.defense-section > * {
+.threat-section>*,
+.defense-section>* {
   width: 100%;
   display: flex;
   flex-direction: column;
 }
 
 .sentinel-section {
-  margin-bottom: 40px; /* Increased margin */
+  margin-bottom: 40px;
+  /* Increased margin */
 }
 
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 24px; /* Increased gap */
+  gap: 24px;
+  /* Increased gap */
 }
 
 .stat-card {
@@ -281,8 +303,10 @@ onMounted(async () => {
 }
 
 .stat-value {
-  font-size: 28px; /* Softened font size */
-  font-weight: 600; /* Softened font weight */
+  font-size: 28px;
+  /* Softened font size */
+  font-weight: 600;
+  /* Softened font weight */
   color: var(--text-primary);
   margin-bottom: 12px;
 }
@@ -300,7 +324,8 @@ onMounted(async () => {
   width: 40px;
   height: 40px;
   border: 3px solid var(--border-subtle);
-  border-top-color: var(--accent-primary); /* Consistent spinner color */
+  border-top-color: var(--accent-primary);
+  /* Consistent spinner color */
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;

@@ -9,6 +9,7 @@ const props = defineProps<{
     severity: 'low' | 'medium' | 'high' | 'critical'
     count: number
     description: string
+    ruleName: string
   }>
   aiSummary?: string
 }>()
@@ -63,7 +64,8 @@ const severityColor = (severity: string) => {
       <div v-if="props.threats.length > 0" class="all-threats">
         <div class="section-title">All Threats</div>
         <div class="threats-grid">
-          <div v-for="(threat, idx) in props.threats" :key="idx" class="threat-card">
+          <div v-for="(threat, idx) in props.threats" :key="idx" class="threat-card"
+            @click="$emit('threat-click', threat)" style="cursor: pointer;">
             <div class="card-header">
               <span class="threat-type">{{ threat.type }}</span>
               <span class="severity-badge" :style="{ color: severityColor(threat.severity) }">
