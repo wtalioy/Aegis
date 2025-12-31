@@ -75,9 +75,9 @@ onUnmounted(() => {
 
 .select-trigger {
   width: 100%;
-  padding: 8px 10px;
-  background: var(--bg-void);
-  border: 1px solid var(--border-subtle);
+  padding: 8px 12px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   font-size: 13px;
   color: var(--text-primary);
@@ -87,13 +87,13 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  transition: all 0.2s;
-  height: 36px;
+  transition: all var(--transition-fast);
+  height: 40px;
   box-sizing: border-box;
 }
 
 .custom-select.size-sm .select-trigger {
-  padding: 6px 8px;
+  padding: 6px 10px;
   font-size: 12px;
   height: 36px;
 }
@@ -105,25 +105,18 @@ onUnmounted(() => {
 
 .select-trigger:hover:not(:disabled) {
   border-color: var(--border-default);
-  background: var(--bg-elevated);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transform: translateY(-1px);
+  background: var(--bg-hover);
 }
 
 .select-trigger:disabled {
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
 .custom-select.is-open .select-trigger {
-  border-color: var(--border-default);
-  background: var(--bg-elevated);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-}
-
-.custom-select.is-disabled .select-trigger {
-  opacity: 0.5;
-  cursor: not-allowed;
+  border-color: var(--accent-primary);
+  background: var(--bg-surface);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 .select-value {
@@ -147,9 +140,9 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-md);
   z-index: 1000;
   max-height: 200px;
   overflow-y: auto;
@@ -160,17 +153,12 @@ onUnmounted(() => {
 /* Dropdown animation */
 .dropdown-enter-active,
 .dropdown-leave-active {
-  transition: all 0.2s ease;
+  transition: opacity 0.15s ease;
 }
 
-.dropdown-enter-from {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-
+.dropdown-enter-from,
 .dropdown-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
 }
 
 .select-option {
@@ -184,22 +172,16 @@ onUnmounted(() => {
   font-family: inherit;
   cursor: pointer;
   text-align: left;
-  transition: all 0.15s;
+  transition: background-color var(--transition-fast);
 }
 
 .select-option:hover {
-  background: var(--bg-elevated);
-  transform: scale(1.005);
+  background: var(--bg-hover);
 }
 
 .select-option.is-selected {
-  background: var(--bg-void);
+  background: var(--bg-overlay);
   color: var(--text-primary);
   font-weight: 500;
-}
-
-.select-option.is-selected:hover {
-  background: var(--bg-elevated);
-  border-left-color: var(--border-default);
 }
 </style>

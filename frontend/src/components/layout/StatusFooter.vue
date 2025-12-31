@@ -46,7 +46,7 @@ onUnmounted(() => {
   <footer class="status-footer">
     <div class="footer-left">
       <div class="footer-item">
-        <Activity :size="14" class="footer-icon active" />
+        <Activity :size="14" class="footer-icon" :class="stats.probeStatus" />
         <span class="footer-label">eBPF:</span>
         <span class="footer-value" :class="stats.probeStatus">
           {{ stats.probeStatus === 'active' ? 'Active' : stats.probeStatus }}
@@ -77,14 +77,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 24px; /* Consistent padding */
   font-size: 12px;
+  color: var(--text-muted);
 }
 
 .footer-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px; /* Increased gap for more breathing room */
 }
 
 .footer-item {
@@ -106,8 +107,9 @@ onUnmounted(() => {
 }
 
 .footer-value {
-  color: var(--text-secondary);
+  color: var(--text-primary); /* More prominent value color */
   font-family: var(--font-mono);
+  font-weight: 500;
 }
 
 .footer-value.active {
@@ -124,4 +126,3 @@ onUnmounted(() => {
   background: var(--border-subtle);
 }
 </style>
-

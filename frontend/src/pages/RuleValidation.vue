@@ -278,7 +278,6 @@ onBeforeUnmount(() => {
         <div class="page-header">
             <div class="header-content">
                 <h1 class="page-title">
-                    <ClipboardCheck :size="24" class="title-icon" />
                     Rule Validation
                 </h1>
                 <span class="page-subtitle">Test and promote rules to production</span>
@@ -433,7 +432,7 @@ onBeforeUnmount(() => {
     align-items: center;
     gap: 12px;
     font-size: 24px;
-    font-weight: 700;
+    font-weight: 600; /* Softened from 700 */
     color: var(--text-primary);
     margin: 0;
 }
@@ -457,18 +456,22 @@ onBeforeUnmount(() => {
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    background: var(--bg-elevated);
+    background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
 }
 
 .stat-card.ready {
     border-color: var(--status-safe);
-    background: rgba(34, 197, 94, 0.05);
+    background: var(--status-safe-dim);
 }
 
 .stat-icon {
-    color: var(--accent-primary);
+    color: var(--text-secondary);
+}
+
+.stat-card.ready .stat-icon {
+    color: var(--status-safe);
 }
 
 .stat-info {
@@ -486,7 +489,7 @@ onBeforeUnmount(() => {
 
 .stat-value {
     font-size: 18px;
-    font-weight: 700;
+    font-weight: 600; /* Softened from 700 */
     color: var(--text-primary);
 }
 
@@ -495,17 +498,16 @@ onBeforeUnmount(() => {
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    background: rgba(34, 197, 94, 0.1);
-    border: 1px solid rgba(34, 197, 94, 0.3);
+    background: var(--status-safe-dim);
+    border: 1px solid var(--status-safe);
     border-radius: var(--radius-md);
-    color: rgb(34, 197, 94);
+    color: var(--status-safe);
     font-size: 13px;
-    animation: slideDown 0.3s ease-out;
 }
 
 .banner-icon {
     flex-shrink: 0;
-    color: rgb(34, 197, 94);
+    color: var(--status-safe);
 }
 
 .banner-content {
@@ -517,19 +519,19 @@ onBeforeUnmount(() => {
 
 .banner-title {
     font-weight: 600;
-    color: rgb(34, 197, 94);
+    color: var(--status-safe);
 }
 
 .banner-text {
     font-size: 12px;
-    color: rgba(34, 197, 94, 0.8);
+    color: var(--text-secondary);
 }
 
 .banner-close {
     flex-shrink: 0;
     background: none;
     border: none;
-    color: rgba(34, 197, 94, 0.6);
+    color: var(--text-muted);
     cursor: pointer;
     padding: 4px;
     display: flex;
@@ -538,19 +540,7 @@ onBeforeUnmount(() => {
 }
 
 .banner-close:hover {
-    color: rgb(34, 197, 94);
-}
-
-@keyframes slideDown {
-    from {
-        opacity: 0;
-        transform: translateY(-10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    color: var(--text-primary);
 }
 
 .error-banner {
@@ -558,10 +548,10 @@ onBeforeUnmount(() => {
     align-items: center;
     gap: 8px;
     padding: 12px 16px;
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.2);
+    background: var(--status-critical-dim);
+    border: 1px solid var(--status-critical);
     border-radius: var(--radius-md);
-    color: rgb(239, 68, 68);
+    color: var(--status-critical);
     font-size: 13px;
 }
 
@@ -600,7 +590,7 @@ onBeforeUnmount(() => {
 
 .rule-count {
     padding: 4px 8px;
-    background: var(--bg-elevated);
+    background: var(--bg-overlay);
     border-radius: var(--radius-sm);
     font-size: 12px;
     font-weight: 600;
@@ -662,28 +652,28 @@ onBeforeUnmount(() => {
 }
 
 .severity.critical {
-    background: rgba(239, 68, 68, 0.1);
-    color: rgb(239, 68, 68);
+    background: var(--status-critical-dim);
+    color: var(--status-critical);
 }
 
 .severity.high {
-    background: rgba(249, 115, 22, 0.1);
-    color: rgb(249, 115, 22);
+    background: var(--status-warning-dim);
+    color: var(--status-warning);
 }
 
 .severity.warning {
-    background: rgba(251, 191, 36, 0.1);
-    color: rgb(251, 191, 36);
+    background: var(--status-warning-dim);
+    color: var(--status-warning);
 }
 
 .severity.info {
-    background: rgba(59, 130, 246, 0.1);
-    color: rgb(59, 130, 246);
+    background: var(--status-info-dim);
+    color: var(--status-info);
 }
 
 .action-buttons {
     display: flex;
-    gap: 8px;
+    gap: 12px;
     padding-top: 16px;
     border-top: 1px solid var(--border-subtle);
     flex-wrap: wrap;
@@ -694,62 +684,47 @@ onBeforeUnmount(() => {
     align-items: center;
     gap: 8px;
     padding: 10px 16px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-md);
-    background: var(--bg-elevated);
+    background: var(--bg-surface);
     color: var(--text-secondary);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all var(--transition-fast);
 }
 
 .btn:hover:not(:disabled) {
     background: var(--bg-hover);
     color: var(--text-primary);
-    transform: translateY(-1px);
-}
-
-.btn:active:not(:disabled) {
-    transform: translateY(0);
+    border-color: var(--border-default);
 }
 
 .btn.btn-primary {
     background: var(--accent-primary);
     color: white;
     border-color: var(--accent-primary);
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
 }
 
 .btn.btn-primary:hover:not(:disabled) {
-    background: var(--accent-hover);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
-    transform: translateY(-1px);
-}
-
-.btn.btn-primary:active:not(:disabled) {
-    transform: translateY(0);
-    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+    background: var(--accent-primary-hover);
+    border-color: var(--accent-primary-hover);
 }
 
 .btn.btn-warning {
-    background: rgba(251, 191, 36, 0.1);
-    color: rgb(251, 191, 36);
-    border: 1px solid rgba(251, 191, 36, 0.3);
+    background: var(--status-warning-dim);
+    color: var(--status-warning);
+    border-color: var(--status-warning);
 }
 
 .btn.btn-warning:hover:not(:disabled) {
-    background: rgba(251, 191, 36, 0.2);
-    border-color: rgba(251, 191, 36, 0.5);
-    transform: translateY(-1px);
-}
-
-.btn.btn-warning:active:not(:disabled) {
-    transform: translateY(0);
+    background: var(--status-warning-dim);
+    border-color: var(--status-warning);
+    filter: brightness(0.95);
 }
 
 .btn:disabled {
-    opacity: 0.5;
+    opacity: 0.6;
     cursor: not-allowed;
 }
 
@@ -765,7 +740,7 @@ onBeforeUnmount(() => {
 }
 
 .empty-icon {
-    color: var(--accent-primary);
+    color: var(--text-muted);
     opacity: 0.5;
 }
 

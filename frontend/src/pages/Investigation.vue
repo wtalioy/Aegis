@@ -4,7 +4,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useInvestigation } from '../composables/useInvestigation'
 import EventList from '../components/investigation/EventList.vue'
 import AIContextPanel from '../components/investigation/AIContextPanel.vue'
-import { Lightbulb, Search, X } from 'lucide-vue-next'
+import { Lightbulb, Search, X, CheckCircle2 } from 'lucide-vue-next'
 const { state, searchEvents, explainSelectedEvent, loading, loadMoreEvents, hasMore, loadingMore, refreshEvents, typeCounts } = useInvestigation()
 const filterType = ref<string>('all')
 const searchQuery = ref('')
@@ -120,7 +120,6 @@ onUnmounted(() => {
     <div class="page-header">
       <div class="header-content">
         <h1 class="page-title">
-          <Lightbulb :size="24" class="title-icon" />
           Investigation
         </h1>
         <span class="page-subtitle">AI-assisted threat hunting and event analysis</span>
@@ -168,7 +167,7 @@ onUnmounted(() => {
             <span>Loading events...</span>
           </div>
           <div v-else-if="sortedEvents.length === 0" class="empty-state">
-            <span class="empty-icon">✓</span>
+            <CheckCircle2 :size="40" class="empty-icon" />
             <span class="empty-text">
               {{ state.events.length === 0 ? 'No events detected' : 'No matching events' }}
             </span>
@@ -198,7 +197,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding: 0 4px;
+  padding: 24px;
 }
 
 /* Header */
@@ -208,7 +207,6 @@ onUnmounted(() => {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 20px;
-  padding: 0 4px;
 }
 
 .header-content {
@@ -221,23 +219,20 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 24px; /* Softened */
+  font-weight: 600; /* Softened */
   color: var(--text-primary);
   margin: 0;
-  letter-spacing: -0.5px;
 }
 
 .title-icon {
   color: var(--accent-primary);
-  filter: drop-shadow(0 0 8px var(--accent-glow));
 }
 
 .page-subtitle {
   font-size: 14px;
   color: var(--text-muted);
   font-weight: 400;
-  letter-spacing: 0.2px;
 }
 
 .header-stats {
@@ -248,12 +243,11 @@ onUnmounted(() => {
 
 .stat-group {
   display: flex;
-  gap: 10px;
-  background: var(--bg-elevated);
+  gap: 8px;
+  background: var(--bg-overlay);
   padding: 6px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-sm);
 }
 
 .stat-badge {
@@ -267,58 +261,32 @@ onUnmounted(() => {
   border: 1px solid transparent;
   min-width: 70px;
   cursor: pointer;
-  transition: all var(--transition-normal);
-  position: relative;
-  overflow: hidden;
-}
-
-.stat-badge::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, transparent 0%, rgba(96, 165, 250, 0.05) 100%);
-  opacity: 0;
-  transition: opacity var(--transition-normal);
+  transition: all var(--transition-fast);
 }
 
 .stat-badge:hover {
-  background: var(--bg-overlay);
+  background: var(--bg-hover);
   border-color: var(--border-default);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.stat-badge:hover::before {
-  opacity: 1;
 }
 
 .stat-badge.active {
   border-color: var(--accent-primary);
-  background: linear-gradient(135deg, var(--accent-glow) 0%, var(--bg-overlay) 100%);
-  box-shadow: 0 0 0 1px var(--accent-primary), var(--shadow-md);
-}
-
-.stat-badge.active::before {
-  opacity: 1;
+  background: var(--bg-hover);
 }
 
 .stat-value {
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600; /* Softened */
   font-family: var(--font-mono);
   line-height: 1.2;
-  letter-spacing: -0.5px;
 }
 
 .stat-label {
   font-size: 10px;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.8px;
-  font-weight: 600;
+  letter-spacing: 0.5px;
+  font-weight: 500;
   margin-top: 2px;
 }
 
@@ -333,18 +301,6 @@ onUnmounted(() => {
 
 .stat-badge.connect .stat-value {
   color: var(--chart-network);
-}
-
-.stat-badge.active.exec {
-  box-shadow: 0 0 0 1px var(--chart-exec), 0 4px 12px rgba(96, 165, 250, 0.2);
-}
-
-.stat-badge.active.file {
-  box-shadow: 0 0 0 1px var(--chart-file), 0 4px 12px rgba(16, 185, 129, 0.2);
-}
-
-.stat-badge.active.connect {
-  box-shadow: 0 0 0 1px var(--chart-network), 0 4px 12px rgba(245, 158, 11, 0.2);
 }
 
 /* Main Content Layout */
@@ -364,15 +320,10 @@ onUnmounted(() => {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   overflow: hidden;
-  box-shadow: var(--shadow-md);
-  backdrop-filter: blur(10px);
 }
 
 /* Filters */
 .queue-filters {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
   padding: 16px;
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -381,30 +332,24 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  background: var(--bg-elevated);
+  padding: 0 14px;
+  background: var(--bg-overlay);
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid transparent;
   height: 40px;
   box-sizing: border-box;
-  transition: all var(--transition-normal);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+  transition: all var(--transition-fast);
 }
 
 .filter-search:focus-within {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px var(--accent-glow), inset 0 1px 2px rgba(0, 0, 0, 0.1);
   background: var(--bg-surface);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 .search-icon {
   color: var(--text-muted);
   flex-shrink: 0;
-  transition: color var(--transition-fast);
-}
-
-.filter-search:focus-within .search-icon {
-  color: var(--accent-primary);
 }
 
 .search-input {
@@ -414,7 +359,6 @@ onUnmounted(() => {
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
-  font-weight: 400;
 }
 
 .search-input::placeholder {
@@ -433,21 +377,17 @@ onUnmounted(() => {
   border: none;
   cursor: pointer;
   transition: all var(--transition-fast);
-  opacity: 0.7;
 }
 
 .search-clear:hover {
-  background: var(--bg-overlay);
+  background: var(--bg-hover);
   color: var(--text-primary);
-  opacity: 1;
-  transform: scale(1.1);
 }
 
 /* Events Display */
 .events-display {
   flex: 1;
   overflow-y: auto;
-  padding: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
@@ -488,10 +428,8 @@ onUnmounted(() => {
 }
 
 .empty-icon {
-  font-size: 48px;
-  color: var(--status-safe);
+  color: var(--text-muted);
   opacity: 0.6;
-  margin-bottom: 4px;
 }
 
 .empty-text {

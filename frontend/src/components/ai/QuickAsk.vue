@@ -23,7 +23,7 @@ const askAI = async (e: Event) => {
 
 <template>
   <button class="quick-ask-btn" @click="askAI" :title="question || 'Ask AI'">
-    <MessageSquare :size="16" class="icon" />
+    <MessageSquare :size="14" class="icon" />
     <span v-if="!question">Ask AI</span>
     <span v-else>{{ question }}</span>
   </button>
@@ -33,7 +33,8 @@ const askAI = async (e: Event) => {
 .quick-ask-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
+  gap: 8px;
   padding: 8px 14px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
@@ -42,27 +43,19 @@ const askAI = async (e: Event) => {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
-  height: 55px;
+  transition: all var(--transition-fast);
+  height: auto; /* Auto height */
   width: 100%;
   box-sizing: border-box;
 }
 
 .quick-ask-btn .icon {
   flex-shrink: 0;
-  margin: 0;
-  padding: 0;
-  display: block;
 }
 
 .quick-ask-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
   border-color: var(--border-default);
-  transform: translateY(-1px);
-}
-
-.quick-ask-btn:active {
-  transform: translateY(0);
 }
 </style>

@@ -26,20 +26,18 @@ onMounted(async () => {
 <template>
   <header class="topbar">
     <div class="topbar-left">
-      <!-- Left side empty for now -->
-    </div>
-
-    <div class="topbar-center">
-      <!-- AI Omnibox Trigger - Prominent and Centered -->
-      <button v-if="aiStatus?.status === 'ready'" class="omnibox-trigger prominent" @click="toggleOmnibox"
-        title="Open AI Omnibox (Cmd/Ctrl+K)">
-        <Sparkles :size="18" />
-        <span>Ask Aegis anything...</span>
-        <kbd>Cmd/Ctrl+K</kbd>
-      </button>
+      <!-- Logo or breadcrumbs can go here -->
     </div>
 
     <div class="topbar-right">
+      <!-- AI Omnibox Trigger -->
+      <button v-if="aiStatus?.status === 'ready'" class="omnibox-trigger" @click="toggleOmnibox"
+        title="Open AI Omnibox (Cmd/Ctrl+K)">
+        <Sparkles :size="16" />
+        <span>Ask Aegis...</span>
+        <kbd>⌘K</kbd>
+      </button>
+
       <!-- Quick Diagnose Button -->
       <button v-if="aiStatus?.status === 'ready'" class="diagnose-btn" @click="showDiagnosisModal = true"
         :disabled="aiStatus.status !== 'ready'" title="Quick one-click system diagnosis">
@@ -71,37 +69,29 @@ onMounted(async () => {
 .topbar-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
-.topbar-center {
-  flex: 1;
+.diagnose-btn,
+.omnibox-trigger {
   display: flex;
   align-items: center;
-  justify-content: center;
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-.diagnose-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 8px 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
+  background: transparent;
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast) ease;
 }
 
-.diagnose-btn:hover:not(:disabled) {
+.diagnose-btn:hover:not(:disabled),
+.omnibox-trigger:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text-primary);
-  border-color: var(--border-default);
 }
 
 .diagnose-btn:disabled {
@@ -109,60 +99,13 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
-.omnibox-trigger {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.omnibox-trigger.prominent {
-  width: 100%;
-  max-width: 500px;
-  padding: 10px 16px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  font-size: 14px;
-  justify-content: flex-start;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.omnibox-trigger:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.omnibox-trigger.prominent:hover {
-  background: var(--bg-elevated);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.omnibox-trigger.prominent span {
-  flex: 1;
-  text-align: left;
-  color: var(--text-muted);
-}
-
-.omnibox-trigger.prominent:hover span {
-  color: var(--text-primary);
-}
-
 .omnibox-trigger kbd {
   padding: 2px 6px;
-  background: var(--bg-void);
+  background: var(--bg-overlay);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  font-family: monospace;
-  font-size: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--text-muted);
 }
 </style>

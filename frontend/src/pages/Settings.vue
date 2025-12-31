@@ -217,8 +217,9 @@ watch(aiProvider, () => {
           class="save-button"
           :class="{ 'is-saving': saving, 'is-success': saveStatus === 'success' }"
         >
-          <Save v-if="!saving" :size="16" />
-          <Loader2 v-else :size="16" class="spinner" />
+          <Save v-if="!saving && saveStatus !== 'success'" :size="16" />
+          <Loader2 v-if="saving" :size="16" class="spinner" />
+          <CheckCircle2 v-if="saveStatus === 'success'" :size="16" />
           <span>{{ saving ? 'Saving...' : saveStatus === 'success' ? 'Saved!' : 'Save Settings' }}</span>
         </button>
       </div>
@@ -229,13 +230,13 @@ watch(aiProvider, () => {
 <style scoped>
 .settings-page {
   padding: 24px;
-  max-width: 1000px;
+  max-width: 800px; /* Adjusted for better readability */
   margin: 0 auto;
 }
 
 .page-header h1 {
-  font-size: 32px;
-  font-weight: 700;
+  font-size: 28px; /* Softened */
+  font-weight: 600; /* Softened */
   color: var(--text-primary);
   margin: 0 0 8px 0;
 }
@@ -281,11 +282,11 @@ watch(aiProvider, () => {
   font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 0 0 20px 0;
+  margin: 0 0 24px 0; /* Increased margin */
 }
 
 .setting-item {
-  margin-bottom: 20px;
+  margin-bottom: 24px; /* Increased margin */
 }
 
 .setting-item:last-child {
@@ -305,8 +306,8 @@ watch(aiProvider, () => {
 .setting-item input[type="password"] {
   width: 100%;
   padding: 10px 12px;
-  background: var(--bg-void);
-  border: 1px solid var(--border-subtle);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   font-size: 14px;
   color: var(--text-primary);
@@ -317,28 +318,28 @@ watch(aiProvider, () => {
 .setting-item input:focus {
   outline: none;
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px var(--accent-glow);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 .setting-hint {
   font-size: 12px;
   color: var(--text-secondary);
-  margin-top: 4px;
+  margin-top: 6px; /* Increased margin */
   margin-bottom: 0;
 }
 
 .provider-settings {
-  margin-top: 16px;
-  padding-top: 16px;
+  margin-top: 24px; /* Increased margin */
+  padding-top: 24px; /* Increased margin */
   border-top: 1px solid var(--border-subtle);
 }
 
 .error-message {
   padding: 12px 16px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: var(--status-critical-dim);
+  border: 1px solid var(--status-critical);
   border-radius: var(--radius-md);
-  color: #ef4444;
+  color: var(--status-critical);
   font-size: 14px;
 }
 
@@ -346,6 +347,7 @@ watch(aiProvider, () => {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  margin-top: 16px;
 }
 
 .save-button {
@@ -355,45 +357,29 @@ watch(aiProvider, () => {
   padding: 10px 20px;
   background: var(--accent-primary);
   color: white;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
 }
 
 .save-button:hover:not(:disabled) {
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
-  transform: translateY(-1px);
-}
-
-.save-button:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+  background: var(--accent-primary-hover);
 }
 
 .save-button:disabled {
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: not-allowed;
-  transform: none;
 }
 
 .save-button.is-success {
-  background: #10b981;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+  background: var(--status-safe);
 }
 
 .save-button.is-success:hover:not(:disabled) {
-  background: #059669;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
-  transform: translateY(-1px);
-}
-
-.save-button.is-success:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+  background: var(--status-safe);
+  filter: brightness(1.1);
 }
 </style>

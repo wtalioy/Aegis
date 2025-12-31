@@ -33,7 +33,6 @@ const handleAskAI = (insight: Insight) => {
     <div class="page-header">
       <div class="header-content">
         <div class="header-title">
-          <Sparkles :size="24" class="header-icon" />
           <div>
             <h1>AI Sentinel</h1>
             <p class="header-subtitle">Active security insights powered by AI</p>
@@ -114,8 +113,8 @@ const handleAskAI = (insight: Insight) => {
 }
 
 .header-title h1 {
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 24px; /* Softened */
+  font-weight: 600; /* Softened */
   color: var(--text-primary);
   margin: 0 0 4px 0;
 }
@@ -136,7 +135,7 @@ const handleAskAI = (insight: Insight) => {
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  background: var(--bg-elevated);
+  background: var(--bg-overlay);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   font-size: 13px;
@@ -153,7 +152,6 @@ const handleAskAI = (insight: Insight) => {
 
 .status-indicator.connected .status-dot {
   background: var(--status-safe);
-  box-shadow: 0 0 8px var(--status-safe);
 }
 
 .loading-state,

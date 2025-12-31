@@ -91,12 +91,12 @@ const isActive = (path: string) => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 16px;
+  padding: 0 20px; /* Adjusted padding */
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .logo-icon {
-  color: var(--accent-primary);
+  color: var(--text-primary); /* Simplified logo color */
   flex-shrink: 0;
 }
 
@@ -121,9 +121,10 @@ const isActive = (path: string) => {
   padding: 0 16px;
   margin-bottom: 8px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500; /* Softened font weight */
   letter-spacing: 0.05em;
   color: var(--text-muted);
+  text-transform: uppercase;
 }
 
 .nav-item {
@@ -131,7 +132,7 @@ const isActive = (path: string) => {
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
-  margin: 5px 8px;
+  margin: 4px 8px; /* Adjusted margin */
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   text-decoration: none;
@@ -144,8 +145,9 @@ const isActive = (path: string) => {
 }
 
 .nav-item.active {
-  background: var(--accent-glow);
-  color: var(--accent-primary);
+  background: var(--bg-hover); /* Subtle active state */
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .nav-icon {
@@ -156,6 +158,10 @@ const isActive = (path: string) => {
   flex: 1;
   font-size: 14px;
   font-weight: 500;
+}
+
+.nav-item.active .nav-label {
+  font-weight: 600;
 }
 
 .nav-badge {

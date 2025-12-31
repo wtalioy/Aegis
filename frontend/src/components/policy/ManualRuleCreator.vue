@@ -73,7 +73,7 @@ watch(() => props.rule, (rule) => {
     }
 
     cgroup.value = match.cgroup_id || match.cgroup || ''
-    uid.value = match.uid ? Number(match.uid) : ''
+    uid.value = match.uid ? Number(uid.value) : ''
   }
 }, { immediate: true })
 
@@ -272,18 +272,16 @@ const deleteRule = () => {
 
 <style scoped>
 .manual-creator {
-  padding: 28px;
-  background: var(--bg-elevated);
+  padding: 24px;
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  backdrop-filter: blur(10px);
 }
 
 .creator-body {
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 24px;
 }
 
 .form-section {
@@ -291,25 +289,18 @@ const deleteRule = () => {
   flex-direction: column;
   gap: 20px;
   padding: 24px;
-  background: var(--bg-surface);
+  background: var(--bg-overlay);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  transition: all var(--transition-normal);
-}
-
-.form-section:hover {
-  border-color: var(--border-default);
-  box-shadow: var(--shadow-md);
 }
 
 .section-title {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600; /* Softened */
   color: var(--text-muted);
-  margin: 0 0 4px 0;
+  margin: 0;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.6px;
 }
 
 .form-group {
@@ -325,55 +316,47 @@ const deleteRule = () => {
 }
 
 .form-label {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px; /* Increased size */
+  font-weight: 500;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 2px;
+  margin-bottom: 0;
 }
 
 .form-input,
 .form-textarea {
-  padding: 12px 16px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   font-size: 14px;
   font-family: inherit;
   color: var(--text-primary);
-  transition: all var(--transition-normal);
-  line-height: 1.5;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+  transition: all var(--transition-fast);
 }
 
 .form-input:hover,
 .form-textarea:hover {
   border-color: var(--border-default);
-  background: var(--bg-surface);
 }
 
 .form-input:focus,
 .form-textarea:focus {
   outline: none;
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px var(--accent-glow), inset 0 1px 2px rgba(0, 0, 0, 0.1);
   background: var(--bg-surface);
 }
 
 .form-textarea {
-  resize: none;
+  resize: vertical;
   min-height: 100px;
-  max-height: 200px;
-  overflow-y: auto;
 }
 
 .form-actions {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
-  padding-top: 12px;
-  margin-top: 8px;
+  padding-top: 24px;
+  margin-top: 0;
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -384,94 +367,56 @@ const deleteRule = () => {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px 24px;
+  padding: 10px 20px;
   border-radius: var(--radius-md);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: all var(--transition-normal);
-  border: none;
-  position: relative;
-  overflow: hidden;
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
 }
 
 .btn-icon {
-  padding: 12px;
-  min-width: 44px;
-  width: 44px;
-  height: 44px;
+  padding: 10px;
+  width: 40px;
+  height: 40px;
 }
 
 .btn-primary {
   background: var(--accent-primary);
   color: white;
-  box-shadow: 0 2px 8px rgba(96, 165, 250, 0.3);
-}
-
-.btn-primary::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-  transition: left var(--transition-slow);
+  border-color: var(--accent-primary);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-primary-hover);
-  box-shadow: 0 4px 12px rgba(96, 165, 250, 0.4);
-  transform: translateY(-2px);
-}
-
-.btn-primary:hover:not(:disabled)::before {
-  left: 100%;
-}
-
-.btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(96, 165, 250, 0.3);
+  border-color: var(--accent-primary-hover);
 }
 
 .btn-primary:disabled {
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: not-allowed;
-  transform: none;
 }
 
 .btn-secondary {
   background: var(--bg-surface);
   color: var(--text-secondary);
-  border: 1px solid var(--border-default);
+  border-color: var(--border-default);
 }
 
 .btn-secondary:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
-  border-color: var(--border-default);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-}
-
-.btn-secondary:active {
-  transform: translateY(0);
 }
 
 .btn-danger {
-  background: var(--status-blocked);
-  color: white;
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+  background: var(--status-critical-dim);
+  color: var(--status-critical);
+  border-color: var(--status-critical);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #b91c1c;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
-  transform: translateY(-2px);
-}
-
-.btn-danger:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.3);
+  background: var(--status-critical);
+  color: white;
 }
 </style>

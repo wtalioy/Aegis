@@ -203,18 +203,18 @@ onMounted(async () => {
 
 <style scoped>
 .observatory-page {
-  padding: 24px;
+  padding: 32px; /* Increased padding for more space */
   max-width: 1400px;
   margin: 0 auto;
 }
 
 .page-header {
-  margin-bottom: 32px;
+  margin-bottom: 40px; /* Increased margin */
 }
 
 .page-header h1 {
-  font-size: 32px;
-  font-weight: 700;
+  font-size: 28px; /* Softened font size */
+  font-weight: 600; /* Softened font weight */
   color: var(--text-primary);
   margin: 0 0 8px 0;
 }
@@ -226,14 +226,14 @@ onMounted(async () => {
 }
 
 .health-section {
-  margin-bottom: 32px;
+  margin-bottom: 40px; /* Increased margin */
 }
 
 .main-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  margin-bottom: 32px;
+  gap: 32px; /* Increased gap */
+  margin-bottom: 40px; /* Increased margin */
   align-items: stretch;
 }
 
@@ -243,21 +243,21 @@ onMounted(async () => {
   height: 100%;
 }
 
-.threat-section>*,
-.defense-section>* {
+.threat-section > *,
+.defense-section > * {
   width: 100%;
   display: flex;
   flex-direction: column;
 }
 
 .sentinel-section {
-  margin-bottom: 32px;
+  margin-bottom: 40px; /* Increased margin */
 }
 
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 20px;
+  gap: 24px; /* Increased gap */
 }
 
 .stat-card {
@@ -265,6 +265,11 @@ onMounted(async () => {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
+  transition: background-color var(--transition-fast);
+}
+
+.stat-card:hover {
+  background: var(--bg-hover);
 }
 
 .stat-label {
@@ -276,8 +281,8 @@ onMounted(async () => {
 }
 
 .stat-value {
-  font-size: 32px;
-  font-weight: 700;
+  font-size: 28px; /* Softened font size */
+  font-weight: 600; /* Softened font weight */
   color: var(--text-primary);
   margin-bottom: 12px;
 }
@@ -295,7 +300,7 @@ onMounted(async () => {
   width: 40px;
   height: 40px;
   border: 3px solid var(--border-subtle);
-  border-top-color: var(--chart-network);
+  border-top-color: var(--accent-primary); /* Consistent spinner color */
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;
