@@ -1,11 +1,12 @@
 package rules
 
 import (
+	"aegis/pkg/events"
+	"aegis/pkg/utils"
 	"slices"
 	"sort"
 	"strings"
-
-	"aegis/pkg/utils"
+	"time"
 )
 
 type fileEvent struct {
@@ -29,16 +30,18 @@ type pathPrefixBucket struct {
 }
 
 type fileMatcher struct {
-	inodeRules map[InodeKey][]*Rule
-	pathRules  map[string][]*Rule
-	prefixes   []pathPrefixBucket
+	inodeRules    map[InodeKey][]*Rule
+	pathRules     map[string][]*Rule
+	prefixes      []pathPrefixBucket
+	testingBuffer *TestingBuffer
 }
 
-func newFileMatcher(rules []Rule) *fileMatcher {
+func newFileMatcher(rules []Rule, testingBuffer *TestingBuffer) *fileMatcher {
 	matcher := &fileMatcher{
-		inodeRules: make(map[InodeKey][]*Rule),
-		pathRules:  make(map[string][]*Rule),
-		prefixes:   make([]pathPrefixBucket, 0),
+		inodeRules:    make(map[InodeKey][]*Rule),
+		pathRules:     make(map[string][]*Rule),
+		prefixes:      make([]pathPrefixBucket, 0),
+		testingBuffer: testingBuffer,
 	}
 
 	prefixIndex := make(map[string]int)
@@ -248,4 +251,86 @@ func ensureTrailingSlash(path string) string {
 		return path
 	}
 	return path + "/"
+}
+
+func (m *fileMatcher) getCandidateRules(event fileEvent, ino, dev uint64) []*Rule {
+	var candidates []*Rule
+	// Check inode rules first
+	if rules, ok := m.inodeRules[InodeKey{Ino: ino, Dev: dev}]; ok {
+		candidates = append(candidates, rules...)
+	}
+
+	// Check exact path matches
+	for _, key := range event.pathVariants {
+		if key == "" {
+			continue
+		}
+		if rules, ok := m.pathRules[key]; ok {
+			candidates = append(candidates, rules...)
+		}
+	}
+
+	// Check prefix matches
+	for _, bucket := range m.prefixes {
+		for _, variant := range event.pathVariants {
+			if variant == "" {
+				continue
+			}
+			if strings.HasPrefix(variant, bucket.prefix) {
+				candidates = append(candidates, bucket.rules...)
+				break // All rules in this bucket are candidates, move to next bucket
+			}
+		}
+	}
+	return candidates
+}
+
+func (m *fileMatcher) CollectAlerts(ino, dev uint64, filename string, pid uint32, cgroupID uint64, processName string) []MatchedAlert {
+	variants := utils.PathVariants(filename)
+	if len(variants) == 0 && filename != "" {
+		if normalized := utils.NormalizeFilename(filename); normalized != "" {
+			variants = append(variants, normalized)
+		}
+	}
+
+	event := fileEvent{
+		filename:     filename,
+		pathVariants: variants,
+		pid:          pid,
+		cgroupID:     cgroupID,
+	}
+
+	candidates := m.getCandidateRules(event, ino, dev)
+
+	// Process matched rules
+	var alerts []MatchedAlert
+	seen := make(map[*Rule]bool)
+
+	for _, rule := range candidates {
+		if seen[rule] {
+			continue
+		}
+		seen[rule] = true
+
+		if m.matchRule(rule, event) {
+			if rule.IsTesting() && m.testingBuffer != nil {
+				hit := &TestingHit{
+					RuleName:    rule.Name,
+					HitTime:     time.Now(),
+					EventType:   events.EventTypeFileOpen,
+					EventData:   &events.FileOpenEvent{Ino: ino, Dev: dev},
+					PID:         pid,
+					ProcessName: processName,
+				}
+				m.testingBuffer.RecordHit(hit)
+			} else if !rule.IsTesting() {
+				alerts = append(alerts, MatchedAlert{
+					Rule:    *rule,
+					Message: rule.Description,
+				})
+			}
+		}
+	}
+
+	return alerts
 }

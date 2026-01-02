@@ -1,6 +1,8 @@
 package rules
 
 import (
+	"time"
+
 	"aegis/pkg/events"
 )
 
@@ -8,13 +10,15 @@ type execMatcher struct {
 	exactProcessNameRules map[string][]*Rule
 	exactParentNameRules  map[string][]*Rule
 	partialMatchRules     []*Rule
+	testingBuffer         *TestingBuffer
 }
 
-func newExecMatcher(rules []Rule) *execMatcher {
+func newExecMatcher(rules []Rule, testingBuffer *TestingBuffer) *execMatcher {
 	matcher := &execMatcher{
 		exactProcessNameRules: make(map[string][]*Rule),
 		exactParentNameRules:  make(map[string][]*Rule),
 		partialMatchRules:     make([]*Rule, 0),
+		testingBuffer:         testingBuffer,
 	}
 	for i := range rules {
 		rule := &rules[i]
@@ -80,7 +84,22 @@ func (m *execMatcher) CollectAlerts(event events.ProcessedEvent) []MatchedAlert 
 		}
 		seen[rule] = true
 		if m.matchRule(rule, event) {
-			alerts = append(alerts, MatchedAlert{Rule: *rule, Event: event, Message: rule.Description})
+			if rule.IsTesting() {
+				// Record hit for testing rules without generating an alert
+				if m.testingBuffer != nil {
+					hit := &TestingHit{
+						RuleName:    rule.Name,
+						HitTime:     time.Now(),
+						EventType:   event.Event.Hdr.Type,
+						EventData:   event.Event,
+						PID:         event.Event.Hdr.PID,
+						ProcessName: event.Process,
+					}
+					m.testingBuffer.RecordHit(hit)
+				}
+			} else {
+				alerts = append(alerts, MatchedAlert{Rule: *rule, Event: event, Message: rule.Description})
+			}
 		}
 	}
 	return alerts
