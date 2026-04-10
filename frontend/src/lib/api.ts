@@ -1,6 +1,11 @@
 // API Abstraction Layer for the web frontend
 
-const API_BASE = '/api'
+const API_BASE = '/api/v1'
+const SYSTEM_API_BASE = `${API_BASE}/system`
+const EVENTS_API_BASE = `${API_BASE}/events`
+const POLICIES_API_BASE = `${API_BASE}/policies`
+const ANALYSIS_API_BASE = `${API_BASE}/analysis`
+const SENTINEL_API_BASE = `${API_BASE}/sentinel`
 
 export interface SystemStats {
     processCount: number
@@ -86,23 +91,23 @@ type EventCallback<T> = (data: T) => void
 type UnsubscribeFn = () => void
 
 export async function getSystemStats(): Promise<SystemStats> {
-    const resp = await fetch('/api/stats')
+    const resp = await fetch(`${SYSTEM_API_BASE}/stats`)
     return resp.json()
 }
 
 export async function getAlerts(): Promise<Alert[]> {
-    const resp = await fetch('/api/alerts')
+    const resp = await fetch(`${SYSTEM_API_BASE}/alerts`)
     return resp.json()
 }
 
 
 export async function getRules(): Promise<DetectionRule[]> {
-    const resp = await fetch('/api/rules')
+    const resp = await fetch(POLICIES_API_BASE)
     return resp.json()
 }
 
 export async function createRule(rule: DetectionRule, mode: 'testing' | 'production' = 'testing'): Promise<DetectionRule> {
-    const resp = await fetch('/api/rules', {
+    const resp = await fetch(POLICIES_API_BASE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rule, mode })
@@ -117,7 +122,7 @@ export async function createRule(rule: DetectionRule, mode: 'testing' | 'product
 
 export async function updateRule(ruleName: string, rule: DetectionRule): Promise<DetectionRule> {
     const encodedName = encodeURIComponent(ruleName)
-    const resp = await fetch(`/api/rules/${encodedName}`, {
+    const resp = await fetch(`${POLICIES_API_BASE}/${encodedName}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rule })
@@ -132,7 +137,7 @@ export async function updateRule(ruleName: string, rule: DetectionRule): Promise
 
 export async function deleteRule(ruleName: string): Promise<void> {
     const encodedName = encodeURIComponent(ruleName)
-    const resp = await fetch(`/api/rules/${encodedName}`, {
+    const resp = await fetch(`${POLICIES_API_BASE}/${encodedName}`, {
         method: 'DELETE'
     })
     if (!resp.ok) {
@@ -142,7 +147,7 @@ export async function deleteRule(ruleName: string): Promise<void> {
 }
 
 export function subscribeToEventRates(callback: EventCallback<EventRates>): UnsubscribeFn {
-    const eventSource = new EventSource('/api/events')
+    const eventSource = new EventSource(`${EVENTS_API_BASE}/stream`)
 
     eventSource.onmessage = (event) => {
         try {
@@ -227,7 +232,7 @@ export interface AIError {
 // ============================================
 
 export async function getAIStatus(): Promise<AIStatus> {
-    const resp = await fetch('/api/ai/status')
+    const resp = await fetch(`${ANALYSIS_API_BASE}/status`)
     if (!resp.ok) {
         try {
             const error: AIError = await resp.json()
@@ -241,7 +246,7 @@ export async function getAIStatus(): Promise<AIStatus> {
 }
 
 export async function diagnoseSystem(): Promise<DiagnosisResult> {
-    const resp = await fetch('/api/ai/diagnose')
+    const resp = await fetch(`${ANALYSIS_API_BASE}/diagnose`)
 
     if (!resp.ok) {
         try {
@@ -260,7 +265,7 @@ export async function sendChatMessage(
     message: string,
     sessionId?: string
 ): Promise<ChatResponse> {
-    const resp = await fetch('/api/ai/chat', {
+    const resp = await fetch(`${ANALYSIS_API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, sessionId: sessionId || '' })
@@ -289,7 +294,7 @@ export async function sendChatMessageStream(
     onComplete: () => void
 ): Promise<void> {
     try {
-        const resp = await fetch('/api/ai/chat/stream', {
+        const resp = await fetch(`${ANALYSIS_API_BASE}/chat/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message, sessionId })
@@ -342,7 +347,7 @@ export async function sendChatMessageStream(
 }
 
 export async function getChatHistory(sessionId: string): Promise<ChatMessage[]> {
-    const resp = await fetch(`/api/ai/chat/history?sessionId=${encodeURIComponent(sessionId)}`)
+    const resp = await fetch(`${ANALYSIS_API_BASE}/chat/history?sessionId=${encodeURIComponent(sessionId)}`)
     if (!resp.ok) {
         try {
             const error: AIError = await resp.json()
@@ -356,7 +361,7 @@ export async function getChatHistory(sessionId: string): Promise<ChatMessage[]> 
 }
 
 export async function clearChatHistory(sessionId: string): Promise<void> {
-    const resp = await fetch('/api/ai/chat/clear', {
+    const resp = await fetch(`${ANALYSIS_API_BASE}/chat/clear`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId })
@@ -389,19 +394,65 @@ export interface AISettings {
 }
 
 export interface Settings {
-    ai: AISettings
+    server: {
+        port: number
+    }
+    kernel: {
+        bpf_path: string
+        ring_buffer_size: number
+    }
+    telemetry: {
+        process_tree_max_age: string
+        process_tree_max_size: number
+        process_tree_max_chain_length: number
+        recent_events_capacity: number
+        event_index_size: number
+    }
+    policy: {
+        rules_path: string
+        promotion_min_observation_minutes: number
+        promotion_min_hits: number
+    }
+    analysis: {
+        mode: 'ollama' | 'openai' | 'disabled'
+        ollama: {
+            endpoint: string
+            model: string
+            timeout: number
+        }
+        openai: {
+            endpoint: string
+            api_key: string
+            model: string
+            timeout: number
+        }
+    }
+    sentinel: {
+        testing_promotion: string
+        anomaly: string
+        rule_optimization: string
+        daily_report: string
+    }
 }
 
 export async function getSettings(): Promise<Settings> {
-    const resp = await fetch(`${API_BASE}/settings`)
+    const resp = await fetch(`${SYSTEM_API_BASE}/settings`)
     if (!resp.ok) {
         throw new Error('Failed to load settings')
     }
     return resp.json()
 }
 
-export async function updateSettings(settings: Settings): Promise<void> {
-    const resp = await fetch(`${API_BASE}/settings`, {
+export interface UpdateSettingsResult {
+    updated: boolean
+    hot_reloaded_fields: string[]
+    restart_required: boolean
+    restart_required_fields: string[]
+    config: Settings
+}
+
+export async function updateSettings(settings: Settings): Promise<UpdateSettingsResult> {
+    const resp = await fetch(`${SYSTEM_API_BASE}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings)
@@ -410,6 +461,7 @@ export async function updateSettings(settings: Settings): Promise<void> {
         const error = await resp.json().catch(() => ({ error: 'Failed to update settings' }))
         throw new Error(error.error || 'Failed to update settings')
     }
+    return resp.json()
 }
 
 // ============================================
@@ -417,19 +469,19 @@ export async function updateSettings(settings: Settings): Promise<void> {
 // ============================================
 
 export async function getRuleValidation(ruleId: string) {
-    const response = await fetch(`${API_BASE}/rules/validation/${ruleId}`)
+    const response = await fetch(`${POLICIES_API_BASE}/validation/${ruleId}`)
     if (!response.ok) throw new Error('Failed to get rule validation')
     return response.json()
 }
 
 export async function getTestingRules() {
-    const response = await fetch(`${API_BASE}/rules/testing`)
+    const response = await fetch(`${POLICIES_API_BASE}/testing`)
     if (!response.ok) throw new Error('Failed to get testing rules')
     return response.json()
 }
 
 export async function promoteRule(ruleId: string) {
-    const response = await fetch(`${API_BASE}/rules/validation/${ruleId}/promote`, {
+    const response = await fetch(`${POLICIES_API_BASE}/${ruleId}/promote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
     })
@@ -438,11 +490,10 @@ export async function promoteRule(ruleId: string) {
 }
 
 export async function demoteRule(ruleId: string) {
-    const response = await fetch(`${API_BASE}/rules/validation/${ruleId}/demote`, {
+    const response = await fetch(`${POLICIES_API_BASE}/${ruleId}/demote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
     })
     if (!response.ok) throw new Error('Failed to demote rule')
     return response.json()
 }
-

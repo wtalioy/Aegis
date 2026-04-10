@@ -11,14 +11,14 @@ const promotionMinHits = ref(100)
 // Fetch config from API
 onMounted(async () => {
   try {
-    const response = await fetch('/api/settings')
+    const response = await fetch('/api/v1/system/settings')
     if (response.ok) {
       const settings = await response.json()
-      if (settings.promotion?.minObservationMinutes) {
-        promotionMinObservationMinutes.value = settings.promotion.minObservationMinutes
+      if (settings.policy?.promotion_min_observation_minutes) {
+        promotionMinObservationMinutes.value = settings.policy.promotion_min_observation_minutes
       }
-      if (settings.promotion?.minHits) {
-        promotionMinHits.value = settings.promotion.minHits
+      if (settings.policy?.promotion_min_hits) {
+        promotionMinHits.value = settings.policy.promotion_min_hits
       }
     }
   } catch (e) {

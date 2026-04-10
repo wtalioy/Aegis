@@ -19,7 +19,7 @@ export interface InvestigationState {
   aiContext: any | null
 }
 
-const API_BASE = '/api'
+const API_BASE = '/api/v1'
 
 export function useInvestigation() {
   const { explainEvent, analyzeContext } = useAI()
@@ -127,7 +127,7 @@ export function useInvestigation() {
     lastQuery.value = effective
 
     try {
-      const endpoint = '/api/query'
+      const endpoint = `${API_BASE}/events/query`
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -208,7 +208,7 @@ export function useInvestigation() {
     try {
       const base = lastQuery.value || { page: 1, limit: currentLimit.value }
       const nextReq: QueryRequest = { ...base, page: (currentPage.value + 1), limit: currentLimit.value }
-      const endpoint = '/api/query'
+      const endpoint = `${API_BASE}/events/query`
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -270,7 +270,7 @@ export function useInvestigation() {
       }
 
       const refreshReq: QueryRequest = { ...base, page: 1, limit: currentLimit.value }
-      const endpoint = '/api/query'
+      const endpoint = `${API_BASE}/events/query`
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -352,4 +352,3 @@ export function useInvestigation() {
     clearFilters
   }
 }
-

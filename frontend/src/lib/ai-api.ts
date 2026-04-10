@@ -42,7 +42,7 @@ export interface AnalyzeResponse {
   relatedInsights: any[]
 }
 
-const API_BASE = '/api/ai'
+const API_BASE = '/api/v1/analysis'
 
 export async function generateRule(req: RuleGenRequest): Promise<RuleGenResponse | null> {
   try {
@@ -74,7 +74,7 @@ export async function explainEvent(req: ExplainRequest): Promise<ExplainResponse
 
 export async function analyzeContext(req: AnalyzeRequest): Promise<AnalyzeResponse | null> {
   try {
-    const response = await fetch(`${API_BASE}/analyze`, {
+    const response = await fetch(`${API_BASE}/context`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req)
@@ -88,7 +88,7 @@ export async function analyzeContext(req: AnalyzeRequest): Promise<AnalyzeRespon
 
 export async function getSentinelInsights(limit = 50): Promise<any[]> {
   try {
-    const response = await fetch(`${API_BASE}/sentinel/insights?limit=${limit}`)
+    const response = await fetch(`/api/v1/sentinel/insights?limit=${limit}`)
     if (!response.ok) return []
     const data = await response.json()
     return data.insights || []
@@ -96,4 +96,3 @@ export async function getSentinelInsights(limit = 50): Promise<any[]> {
     return []
   }
 }
-

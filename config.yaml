@@ -1,61 +1,38 @@
 # Aegis Configuration File
 
-# Path to compiled eBPF object file
-bpf_path: ./bpf/main.bpf.o
+server:
+  port: 3000
 
-# Path to detection rules file
-rules_path: ./rules.yaml
+kernel:
+  bpf_path: ./bpf/main.bpf.o
+  ring_buffer_size: 262144
 
-# Ring buffer size in bytes (default: 262144 = 256KB)
-# Increase for high-load systems to prevent event loss
-ring_buffer_size: 262144
+telemetry:
+  process_tree_max_age: 30m
+  process_tree_max_size: 10000
+  process_tree_max_chain_length: 50
+  recent_events_capacity: 10000
+  event_index_size: 1000
 
-# Process tree maximum age (default: 30m)
-# Processes older than this are removed from memory
-# Format: 30m, 1h, 2h30m, etc.
-process_tree_max_age: 30m
+policy:
+  rules_path: ./rules.yaml
+  promotion_min_observation_minutes: 1440
+  promotion_min_hits: 100
 
-# Process tree maximum size (default: 10000)
-# Oldest processes are evicted when this limit is reached
-process_tree_max_size: 10000
-
-# Process tree maximum chain length (default: 50)
-# Maximum number of ancestors to trace when building process chains
-process_tree_max_chain_length: 50
-
-# ============================================
-# AI Intelligent Diagnosis Configuration
-# ============================================
-ai:
-  # Provider mode: "ollama" (local, recommended) or "openai" (API)
-  mode: "ollama"
-  
-  # Ollama configuration (when mode: "ollama")
+analysis:
+  mode: ollama
   ollama:
-    # Ollama server endpoint (default assumes local Ollama installation)
-    endpoint: "http://localhost:11434"
-    # Model to use - qwen2.5-coder is good for technical analysis
-    model: "qwen2.5-coder:1.5b"
-    # Request timeout in seconds
+    endpoint: http://localhost:11434
+    model: qwen2.5-coder:1.5b
     timeout: 60
-  
-  # OpenAI-compatible API configuration (when mode: "openai")
   openai:
-    # API endpoint (DeepSeek, OpenAI, or any compatible service)
-    endpoint: "https://api.deepseek.com"
-    # API key (can also use AEGIS_AI_API_KEY env var)
+    endpoint: https://api.deepseek.com
     api_key: ""
-    # Model name
-    model: "deepseek-chat"
-    # Request timeout in seconds
+    model: deepseek-chat
     timeout: 30
 
-# ============================================
-# Rule Promotion Configuration
-# ============================================
-# Minimum observation minutes required for promotion (default: 1440 = 24h)
-# Format: number of minutes (e.g., 1440 for 24 hours, 2880 for 48 hours)
-promotion_min_observation_minutes: 1440
-
-# Minimum hit count required for promotion (default: 100)
-promotion_min_hits: 100
+sentinel:
+  testing_promotion: 15m
+  anomaly: 5m
+  rule_optimization: 1h
+  daily_report: 24h

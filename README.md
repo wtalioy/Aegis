@@ -49,18 +49,31 @@ make web
 
 Aegis is configured via `config.yaml`. You must configure the AI section to enable intelligent features. The default configuration supports local inference via Ollama or remote inference via OpenAI-compatible APIs.
 
-``` yaml
-# config.yaml example
-bpf_path: ./bpf/main.bpf.o
-rules_path: ./rules.yaml
+```yaml
+server:
+  port: 3000
 
-ai:
-  # Mode: "ollama" (local) or "openai" (remote)
-  mode: "ollama"
-  
+kernel:
+  bpf_path: ./bpf/main.bpf.o
+  ring_buffer_size: 262144
+
+policy:
+  rules_path: ./rules.yaml
+  promotion_min_observation_minutes: 1440
+  promotion_min_hits: 100
+
+analysis:
+  mode: ollama
   ollama:
-    endpoint: "http://localhost:11434"
-    model: "qwen2.5-coder:1.5b"
+    endpoint: http://localhost:11434
+    model: qwen2.5-coder:1.5b
+    timeout: 60
+
+sentinel:
+  testing_promotion: 15m
+  anomaly: 5m
+  rule_optimization: 1h
+  daily_report: 24h
 ```
 
 To assist with setting up a local Ollama instance, you can use the included helper script:
@@ -87,9 +100,9 @@ Access the dashboard at `http://localhost:3000`.
 
 Aegis consists of three main components:
 
-1. **eBPF Probe (`bpf/`)**: C programs that attach to kernel hooks (tracepoints, kprobes) to capture system events.
-2. **Go Backend (`cmd/`, `pkg/`)**: Loads eBPF programs, processes event streams, manages the AI runtime pipeline, and serves the API.
-3. **Frontend (`frontend/`)**: A Vue 3 + TypeScript application that provides the visual interface for monitoring and AI interaction.
+1. **eBPF Probe (`bpf/`)**: C programs that attach to kernel hooks to capture system events and enforce fast-path kernel policy decisions.
+2. **Go Backend (`cmd/`, `internal/`, `tests/`)**: A modular monolith with `internal/app` as the composition root, domain modules under `internal/telemetry`, `internal/policy`, `internal/analysis`, and `internal/system`, plus adapters under `internal/platform/*` for HTTP, eBPF, config, persistence, and AI providers.
+3. **Frontend (`frontend/`)**: A Vue 3 + TypeScript application that consumes the `/api/v1/*` backend API and SSE streams.
 
 ## Development
 
@@ -99,6 +112,7 @@ The project includes a `Makefile` to streamline development tasks:
 - `make frontend`: Installs dependencies and builds the frontend assets.
 - `make web`: Builds the full application bundle.
 - `make run`: Builds and runs the application locally with `sudo`.
+- `make test-backend`: Runs the backend Go suite plus legacy-boundary checks.
 - `make clean`: Removes build artifacts.
 
 ## Support

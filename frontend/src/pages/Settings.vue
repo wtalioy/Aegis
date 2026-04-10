@@ -1,18 +1,19 @@
 <!-- Settings Page - Phase 4 -->
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
-import { getSettings, updateSettings, type Settings } from '../lib/api'
+import { getSettings, updateSettings, type Settings, type UpdateSettingsResult } from '../lib/api'
 import Select from '../components/common/Select.vue'
-import { Save, Loader2 } from 'lucide-vue-next'
+import { CheckCircle2, Save, Loader2, RefreshCcw, TriangleAlert } from 'lucide-vue-next'
 
 const settings = ref<Settings | null>(null)
 const loading = ref(true)
 const saving = ref(false)
 const saveStatus = ref<'idle' | 'success' | 'error'>('idle')
 const errorMessage = ref('')
+const updateResult = ref<UpdateSettingsResult | null>(null)
 
 // Form state
-const aiProvider = ref<'ollama' | 'openai'>('ollama')
+const aiProvider = ref<'ollama' | 'openai' | 'disabled'>('ollama')
 const ollamaEndpoint = ref('')
 const ollamaModel = ref('')
 const ollamaTimeout = ref(60)
@@ -22,6 +23,7 @@ const openaiModel = ref('')
 const openaiTimeout = ref(30)
 
 const providerOptions = [
+  { value: 'disabled', label: 'Disabled' },
   { value: 'ollama', label: 'Ollama' },
   { value: 'openai', label: 'OpenAI' }
 ]
@@ -36,14 +38,14 @@ onMounted(async () => {
     settings.value = data
     
     // Populate form
-    aiProvider.value = data.ai.mode
-    ollamaEndpoint.value = data.ai.ollama.endpoint
-    ollamaModel.value = data.ai.ollama.model
-    ollamaTimeout.value = data.ai.ollama.timeout
-    openaiEndpoint.value = data.ai.openai.endpoint
-    openaiApiKey.value = data.ai.openai.apiKey
-    openaiModel.value = data.ai.openai.model
-    openaiTimeout.value = data.ai.openai.timeout
+    aiProvider.value = data.analysis.mode
+    ollamaEndpoint.value = data.analysis.ollama.endpoint
+    ollamaModel.value = data.analysis.ollama.model
+    ollamaTimeout.value = data.analysis.ollama.timeout
+    openaiEndpoint.value = data.analysis.openai.endpoint
+    openaiApiKey.value = data.analysis.openai.api_key
+    openaiModel.value = data.analysis.openai.model
+    openaiTimeout.value = data.analysis.openai.timeout
   } catch (err) {
     console.error('Failed to load settings:', err)
     errorMessage.value = err instanceof Error ? err.message : 'Failed to load settings'
@@ -59,10 +61,12 @@ const saveSettings = async () => {
   saving.value = true
   saveStatus.value = 'idle'
   errorMessage.value = ''
+  updateResult.value = null
   
   try {
     const updated: Settings = {
-      ai: {
+      ...settings.value,
+      analysis: {
         mode: aiProvider.value,
         ollama: {
           endpoint: ollamaEndpoint.value,
@@ -71,15 +75,16 @@ const saveSettings = async () => {
         },
         openai: {
           endpoint: openaiEndpoint.value,
-          apiKey: openaiApiKey.value,
+          api_key: openaiApiKey.value,
           model: openaiModel.value,
           timeout: openaiTimeout.value
         }
       }
     }
     
-    await updateSettings(updated)
-    settings.value = updated
+    const result = await updateSettings(updated)
+    updateResult.value = result
+    settings.value = result.config
     saveStatus.value = 'success'
     
     // Clear success message after 3 seconds
@@ -208,6 +213,30 @@ watch(aiProvider, () => {
 
       <div v-if="errorMessage" class="error-message">
         {{ errorMessage }}
+      </div>
+
+      <div v-if="updateResult && saveStatus === 'success'" class="update-summary">
+        <div v-if="updateResult.hot_reloaded_fields.length > 0" class="update-summary-card hot-reload-card">
+          <div class="summary-header">
+            <RefreshCcw :size="16" />
+            <span>Applied live</span>
+          </div>
+          <p>These settings took effect immediately:</p>
+          <ul>
+            <li v-for="field in updateResult.hot_reloaded_fields" :key="field">{{ field }}</li>
+          </ul>
+        </div>
+
+        <div v-if="updateResult.restart_required" class="update-summary-card restart-card">
+          <div class="summary-header">
+            <TriangleAlert :size="16" />
+            <span>Restart required</span>
+          </div>
+          <p>These settings were saved but need a restart:</p>
+          <ul>
+            <li v-for="field in updateResult.restart_required_fields" :key="field">{{ field }}</li>
+          </ul>
+        </div>
       </div>
 
       <div class="settings-actions">
@@ -340,6 +369,52 @@ watch(aiProvider, () => {
   border: 1px solid var(--status-critical);
   border-radius: var(--radius-md);
   color: var(--status-critical);
+  font-size: 14px;
+}
+
+.update-summary {
+  display: grid;
+  gap: 16px;
+}
+
+.update-summary-card {
+  padding: 16px 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hot-reload-card .summary-header {
+  color: var(--status-safe);
+}
+
+.restart-card .summary-header {
+  color: var(--status-warning);
+}
+
+.update-summary-card p {
+  margin: 0 0 8px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.update-summary-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.update-summary-card li {
+  margin: 4px 0;
+  color: var(--text-primary);
   font-size: 14px;
 }
 

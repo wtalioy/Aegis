@@ -24,9 +24,7 @@ frontend:
 web: bpf frontend
 	@echo "==> Building Web Server..."
 	@mkdir -p $(BUILD)
-	@cp -r frontend cmd/
 	@go build -tags web -o $(BUILD)/aegis-web ./cmd
-	@rm -rf cmd/frontend
 
 # Run
 run: web
@@ -36,7 +34,7 @@ run: web
 # 
 clean:
 	@rm -f $(BPF_OBJ) $(BUILD)/aegis-web
-	@rm -rf $(BUILD)/bin cmd/frontend cmd/build
+	@rm -rf $(BUILD)/bin cmd/build
 
 clean-all: clean
 	@rm -rf ./frontend/node_modules ./frontend/dist
@@ -44,5 +42,9 @@ clean-all: clean
 help:
 	@echo "make web     - Web server (:3000)"
 	@echo "make run     - Build and run (sudo)"
+	@echo "make test-backend - Run backend Go test suite"
 
-.PHONY: all bpf frontend web dev run clean clean-all help
+test-backend:
+	@sh ./scripts/test_backend.sh
+
+.PHONY: all bpf frontend web dev run clean clean-all help test-backend

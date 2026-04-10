@@ -6,6 +6,19 @@
 
 ---
 
+## Current Backend Layout
+
+The live backend no longer uses the old `pkg/*` runtime shown in some historical sections below. The current implementation is an internal modular monolith:
+
+* `internal/app`: composition root, runtime lifecycle, ingest orchestration
+* `internal/telemetry`: canonical events, query/projection services, process/workload/profile views
+* `internal/policy`: rule lifecycle, evaluation, testing-hit tracking, promotion readiness
+* `internal/analysis`: AI diagnose/chat/explain/analyze workflows and Sentinel coordination
+* `internal/system`: settings, alerts, runtime stats
+* `internal/platform/*`: HTTP, eBPF, config loading, persistence, AI provider adapters
+
+Any remaining `pkg/*` references in the design narrative are historical context from the pre-refactor architecture, not the current live backend shape.
+
 ## 1. Project Background & Objectives
 
 ### 1.1 Challenges with Current Security Tools

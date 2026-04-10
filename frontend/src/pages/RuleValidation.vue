@@ -100,7 +100,7 @@ const loadValidation = async (rule: Rule) => {
     }
     try {
         const encodedName = encodeURIComponent(rule.name)
-        const response = await fetch(`/api/rules/validation/${encodedName}`)
+        const response = await fetch(`/api/v1/policies/validation/${encodedName}`)
         if (!response.ok) {
             const errorText = await response.text()
             throw new Error(errorText || `HTTP ${response.status}`)
@@ -160,7 +160,7 @@ const handlePromote = async (force: boolean = false) => {
     promoting.value = true
     error.value = null
     try {
-        const response = await fetch(`/api/rules/validation/${selectedRule.value.name}/promote`, {
+        const response = await fetch(`/api/v1/policies/${selectedRule.value.name}/promote`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ force })
@@ -210,14 +210,14 @@ const stats = computed(() => ({
 onMounted(async () => {
     // Fetch promotion config
     try {
-        const response = await fetch('/api/settings')
+        const response = await fetch('/api/v1/system/settings')
         if (response.ok) {
             const settings = await response.json()
-            if (settings.promotion?.minObservationMinutes) {
-                promotionMinObservationMinutes.value = settings.promotion.minObservationMinutes
+            if (settings.policy?.promotion_min_observation_minutes) {
+                promotionMinObservationMinutes.value = settings.policy.promotion_min_observation_minutes
             }
-            if (settings.promotion?.minHits) {
-                promotionMinHits.value = settings.promotion.minHits
+            if (settings.policy?.promotion_min_hits) {
+                promotionMinHits.value = settings.policy.promotion_min_hits
             }
         }
     } catch (e) {

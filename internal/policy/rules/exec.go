@@ -1,0 +1,127 @@
+package rules
+
+import (
+	"time"
+
+	"aegis/internal/platform/events"
+)
+
+type execMatcher struct {
+	exactProcessNameRules map[string][]*Rule
+	exactParentNameRules  map[string][]*Rule
+	partialMatchRules     []*Rule
+	testingBuffer         *TestingBuffer
+}
+
+func newExecMatcher(rules []Rule, testingBuffer *TestingBuffer) *execMatcher {
+	matcher := &execMatcher{
+		exactProcessNameRules: make(map[string][]*Rule),
+		exactParentNameRules:  make(map[string][]*Rule),
+		partialMatchRules:     make([]*Rule, 0),
+		testingBuffer:         testingBuffer,
+	}
+	for i := range rules {
+		rule := &rules[i]
+		setDefaultMatchTypes(rule)
+		if hasExecCriteria(rule) {
+			matcher.indexRule(rule)
+		}
+	}
+	return matcher
+}
+
+func setDefaultMatchTypes(rule *Rule) {
+	if rule.Match.ProcessName != "" && rule.Match.ProcessNameType == "" {
+		rule.Match.ProcessNameType = MatchTypeContains
+	}
+	if rule.Match.ParentName != "" && rule.Match.ParentNameType == "" {
+		rule.Match.ParentNameType = MatchTypeContains
+	}
+}
+
+func hasExecCriteria(rule *Rule) bool {
+	m := rule.Match
+	return m.ProcessName != "" || m.ParentName != "" || m.PID != 0 || m.PPID != 0
+}
+
+func (m *execMatcher) indexRule(rule *Rule) {
+	indexed := false
+	if rule.Match.ProcessName != "" && rule.Match.ProcessNameType == MatchTypeExact {
+		m.exactProcessNameRules[rule.Match.ProcessName] = append(
+			m.exactProcessNameRules[rule.Match.ProcessName], rule)
+		indexed = true
+	}
+	if rule.Match.ParentName != "" && rule.Match.ParentNameType == MatchTypeExact {
+		m.exactParentNameRules[rule.Match.ParentName] = append(
+			m.exactParentNameRules[rule.Match.ParentName], rule)
+		indexed = true
+	}
+	if !indexed || rule.Match.ProcessNameType == MatchTypeContains || rule.Match.ParentNameType == MatchTypeContains {
+		m.partialMatchRules = append(m.partialMatchRules, rule)
+	}
+}
+
+func (m *execMatcher) Match(event events.ProcessedEvent) (matched bool, rule *Rule, allowed bool) {
+	return filterRulesByAction(m.getCandidateRules(event), m.matchRuleWrapper, event)
+}
+
+func (m *execMatcher) matchRuleWrapper(rule *Rule, event events.ProcessedEvent) bool {
+	return m.matchRule(rule, event)
+}
+
+func (m *execMatcher) CollectAlerts(event events.ProcessedEvent) []MatchedAlert {
+	candidates := m.getCandidateRules(event)
+	for _, rule := range candidates {
+		if rule.Action == ActionAllow && m.matchRule(rule, event) {
+			return nil
+		}
+	}
+	seen := make(map[*Rule]bool)
+	var alerts []MatchedAlert
+	for _, rule := range candidates {
+		if seen[rule] || rule.Action == ActionAllow {
+			continue
+		}
+		seen[rule] = true
+		if m.matchRule(rule, event) {
+			if rule.IsTesting() {
+				// Record hit for testing rules without generating an alert
+				if m.testingBuffer != nil {
+					hit := &TestingHit{
+						RuleName:    rule.Name,
+						HitTime:     time.Now(),
+						EventType:   event.Event.Hdr.Type,
+						EventData:   event.Event,
+						PID:         event.Event.Hdr.PID,
+						ProcessName: event.Process,
+					}
+					m.testingBuffer.RecordHit(hit)
+				}
+			} else {
+				alerts = append(alerts, MatchedAlert{Rule: *rule, Event: event, Message: rule.Description})
+			}
+		}
+	}
+	return alerts
+}
+
+func (m *execMatcher) getCandidateRules(event events.ProcessedEvent) []*Rule {
+	var candidates []*Rule
+	if rules, ok := m.exactProcessNameRules[event.Process]; ok {
+		candidates = append(candidates, rules...)
+	}
+	if rules, ok := m.exactParentNameRules[event.Parent]; ok {
+		candidates = append(candidates, rules...)
+	}
+	candidates = append(candidates, m.partialMatchRules...)
+	return candidates
+}
+
+func (m *execMatcher) matchRule(rule *Rule, event events.ProcessedEvent) bool {
+	match := rule.Match
+	return (match.ProcessName == "" || matchString(event.Process, match.ProcessName, match.ProcessNameType)) &&
+		(match.ParentName == "" || matchString(event.Parent, match.ParentName, match.ParentNameType)) &&
+		matchPID(match.PID, event.Event.Hdr.PID) &&
+		(match.PPID == 0 || event.Event.PPID == match.PPID) &&
+		matchCgroupID(match.CgroupID, event.Event.Hdr.CgroupID)
+}
