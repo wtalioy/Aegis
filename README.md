@@ -68,6 +68,16 @@ analysis:
     endpoint: http://localhost:11434
     model: qwen2.5-coder:1.5b
     timeout: 60
+  openai:
+    endpoint: https://api.openai.com
+    api_key: ""
+    model: gpt-5-mini
+    timeout: 30
+  gemini:
+    endpoint: https://generativelanguage.googleapis.com
+    api_key: ""
+    model: gemini-3-flash-preview
+    timeout: 30
 
 sentinel:
   testing_promotion: 15m
