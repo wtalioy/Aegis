@@ -24,6 +24,7 @@ type AIOptions struct {
 	Mode   string        `yaml:"mode"`
 	Ollama OllamaOptions `yaml:"ollama"`
 	OpenAI OpenAIOptions `yaml:"openai"`
+	Gemini GeminiOptions `yaml:"gemini"`
 
 	SentinelTestingPromotion string `yaml:"sentinel_testing_promotion"`
 	SentinelAnomaly          string `yaml:"sentinel_anomaly"`
@@ -33,6 +34,7 @@ type AIOptions struct {
 
 type OllamaOptions = ProviderConfig
 type OpenAIOptions = OpenAIProviderConfig
+type GeminiOptions = OpenAIProviderConfig
 
 type Config struct {
 	Server    ServerConfig    `yaml:"server" json:"server"`
@@ -70,6 +72,7 @@ type AnalysisConfig struct {
 	Mode   string               `yaml:"mode" json:"mode"`
 	Ollama ProviderConfig       `yaml:"ollama" json:"ollama"`
 	OpenAI OpenAIProviderConfig `yaml:"openai" json:"openai"`
+	Gemini OpenAIProviderConfig `yaml:"gemini" json:"gemini"`
 }
 
 type ProviderConfig struct {
@@ -123,6 +126,11 @@ func Default(cwd string) Config {
 			OpenAI: OpenAIProviderConfig{
 				Endpoint: "https://api.deepseek.com",
 				Model:    "deepseek-chat",
+				Timeout:  30,
+			},
+			Gemini: OpenAIProviderConfig{
+				Endpoint: "https://generativelanguage.googleapis.com",
+				Model:    "gemini-3-flash-preview",
 				Timeout:  30,
 			},
 		},
@@ -196,6 +204,12 @@ func (c Config) AIOptions() AIOptions {
 			APIKey:   c.Analysis.OpenAI.APIKey,
 			Model:    c.Analysis.OpenAI.Model,
 			Timeout:  c.Analysis.OpenAI.Timeout,
+		},
+		Gemini: GeminiOptions{
+			Endpoint: c.Analysis.Gemini.Endpoint,
+			APIKey:   c.Analysis.Gemini.APIKey,
+			Model:    c.Analysis.Gemini.Model,
+			Timeout:  c.Analysis.Gemini.Timeout,
 		},
 		SentinelTestingPromotion: c.Sentinel.TestingPromotion,
 		SentinelAnomaly:          c.Sentinel.Anomaly,

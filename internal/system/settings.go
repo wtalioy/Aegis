@@ -104,12 +104,14 @@ func validateConfig(cfg Settings) error {
 		return fmt.Errorf("policy.promotion_min_observation_minutes must not be negative")
 	case cfg.Policy.PromotionMinHits < 0:
 		return fmt.Errorf("policy.promotion_min_hits must not be negative")
-	case cfg.Analysis.Mode != "" && cfg.Analysis.Mode != "disabled" && cfg.Analysis.Mode != "ollama" && cfg.Analysis.Mode != "openai":
-		return fmt.Errorf("analysis.mode must be one of disabled, ollama, or openai")
+	case cfg.Analysis.Mode != "" && cfg.Analysis.Mode != "disabled" && cfg.Analysis.Mode != "ollama" && cfg.Analysis.Mode != "openai" && cfg.Analysis.Mode != "gemini":
+		return fmt.Errorf("analysis.mode must be one of disabled, ollama, openai, or gemini")
 	case cfg.Analysis.Ollama.Timeout < 0:
 		return fmt.Errorf("analysis.ollama.timeout must not be negative")
 	case cfg.Analysis.OpenAI.Timeout < 0:
 		return fmt.Errorf("analysis.openai.timeout must not be negative")
+	case cfg.Analysis.Gemini.Timeout < 0:
+		return fmt.Errorf("analysis.gemini.timeout must not be negative")
 	case !isValidDuration(cfg.Sentinel.TestingPromotion):
 		return fmt.Errorf("sentinel.testing_promotion must be a valid duration")
 	case !isValidDuration(cfg.Sentinel.Anomaly):
@@ -151,6 +153,7 @@ func classifyConfigFields(oldCfg, newCfg Settings) ([]string, []string) {
 	appendIfChanged("analysis.mode", oldCfg.Analysis.Mode, newCfg.Analysis.Mode)
 	appendIfChanged("analysis.ollama", oldCfg.Analysis.Ollama, newCfg.Analysis.Ollama)
 	appendIfChanged("analysis.openai", oldCfg.Analysis.OpenAI, newCfg.Analysis.OpenAI)
+	appendIfChanged("analysis.gemini", oldCfg.Analysis.Gemini, newCfg.Analysis.Gemini)
 	appendIfChanged("sentinel.testing_promotion", oldCfg.Sentinel.TestingPromotion, newCfg.Sentinel.TestingPromotion)
 	appendIfChanged("sentinel.anomaly", oldCfg.Sentinel.Anomaly, newCfg.Sentinel.Anomaly)
 	appendIfChanged("sentinel.rule_optimization", oldCfg.Sentinel.RuleOptimization, newCfg.Sentinel.RuleOptimization)
@@ -166,6 +169,7 @@ func isHotReloadableField(path string) bool {
 		"analysis.mode",
 		"analysis.ollama",
 		"analysis.openai",
+		"analysis.gemini",
 		"sentinel.testing_promotion",
 		"sentinel.anomaly",
 		"sentinel.rule_optimization",

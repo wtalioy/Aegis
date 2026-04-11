@@ -38,6 +38,8 @@ func NewService(opts config.AIOptions) (*Service, error) {
 		provider = providers.NewOllamaProvider(opts.Ollama)
 	case "openai":
 		provider = providers.NewOpenAIProvider(opts.OpenAI)
+	case "gemini":
+		provider = providers.NewGeminiProvider(opts.Gemini)
 	default:
 		return nil, fmt.Errorf("unknown AI mode: %s", opts.Mode)
 	}

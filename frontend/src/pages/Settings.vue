@@ -3,7 +3,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { getSettings, updateSettings, type Settings, type UpdateSettingsResult } from '../lib/api'
 import Select from '../components/common/Select.vue'
-import { CheckCircle2, Save, Loader2, RefreshCcw, TriangleAlert } from 'lucide-vue-next'
+import { CheckCircle2, Save, Loader2, RefreshCcw, AlertTriangle } from 'lucide-vue-next'
 
 const settings = ref<Settings | null>(null)
 const loading = ref(true)
@@ -13,7 +13,7 @@ const errorMessage = ref('')
 const updateResult = ref<UpdateSettingsResult | null>(null)
 
 // Form state
-const aiProvider = ref<'ollama' | 'openai' | 'disabled'>('ollama')
+const aiProvider = ref<'ollama' | 'openai' | 'gemini' | 'disabled'>('ollama')
 const ollamaEndpoint = ref('')
 const ollamaModel = ref('')
 const ollamaTimeout = ref(60)
@@ -21,15 +21,21 @@ const openaiEndpoint = ref('')
 const openaiApiKey = ref('')
 const openaiModel = ref('')
 const openaiTimeout = ref(30)
+const geminiEndpoint = ref('')
+const geminiApiKey = ref('')
+const geminiModel = ref('')
+const geminiTimeout = ref(30)
 
 const providerOptions = [
   { value: 'disabled', label: 'Disabled' },
   { value: 'ollama', label: 'Ollama' },
-  { value: 'openai', label: 'OpenAI' }
+  { value: 'openai', label: 'OpenAI-Compatible' },
+  { value: 'gemini', label: 'Gemini' }
 ]
 
 const showOpenAIFields = computed(() => aiProvider.value === 'openai')
 const showOllamaFields = computed(() => aiProvider.value === 'ollama')
+const showGeminiFields = computed(() => aiProvider.value === 'gemini')
 
 // Load settings on mount
 onMounted(async () => {
@@ -46,6 +52,10 @@ onMounted(async () => {
     openaiApiKey.value = data.analysis.openai.api_key
     openaiModel.value = data.analysis.openai.model
     openaiTimeout.value = data.analysis.openai.timeout
+    geminiEndpoint.value = data.analysis.gemini.endpoint
+    geminiApiKey.value = data.analysis.gemini.api_key
+    geminiModel.value = data.analysis.gemini.model
+    geminiTimeout.value = data.analysis.gemini.timeout
   } catch (err) {
     console.error('Failed to load settings:', err)
     errorMessage.value = err instanceof Error ? err.message : 'Failed to load settings'
@@ -78,6 +88,12 @@ const saveSettings = async () => {
           api_key: openaiApiKey.value,
           model: openaiModel.value,
           timeout: openaiTimeout.value
+        },
+        gemini: {
+          endpoint: geminiEndpoint.value,
+          api_key: geminiApiKey.value,
+          model: geminiModel.value,
+          timeout: geminiTimeout.value
         }
       }
     }
@@ -209,6 +225,49 @@ watch(aiProvider, () => {
             <p class="setting-hint">Request timeout in seconds</p>
           </div>
         </div>
+
+        <div v-if="showGeminiFields" class="provider-settings">
+          <div class="setting-item">
+            <label>Base URL</label>
+            <input
+              v-model="geminiEndpoint"
+              type="text"
+              placeholder="https://generativelanguage.googleapis.com"
+            />
+            <p class="setting-hint">Gemini API base URL. Aegis appends the model route automatically.</p>
+          </div>
+
+          <div class="setting-item">
+            <label>API Key</label>
+            <input
+              v-model="geminiApiKey"
+              type="password"
+              placeholder="AIza..."
+            />
+            <p class="setting-hint">Your Google AI Studio or Gemini API key.</p>
+          </div>
+
+          <div class="setting-item">
+            <label>Model</label>
+            <input
+              v-model="geminiModel"
+              type="text"
+              placeholder="gemini-3-flash-preview"
+            />
+            <p class="setting-hint">Model name only, for example gemini-3-flash-preview.</p>
+          </div>
+
+          <div class="setting-item">
+            <label>Timeout (seconds)</label>
+            <input
+              v-model.number="geminiTimeout"
+              type="number"
+              min="10"
+              max="300"
+            />
+            <p class="setting-hint">Request timeout in seconds</p>
+          </div>
+        </div>
       </div>
 
       <div v-if="errorMessage" class="error-message">
@@ -229,7 +288,7 @@ watch(aiProvider, () => {
 
         <div v-if="updateResult.restart_required" class="update-summary-card restart-card">
           <div class="summary-header">
-            <TriangleAlert :size="16" />
+            <AlertTriangle :size="16" />
             <span>Restart required</span>
           </div>
           <p>These settings were saved but need a restart:</p>
