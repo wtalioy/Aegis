@@ -64,12 +64,17 @@ type StatsService interface {
 	Alerts() []system.Alert
 }
 
+type ProbeStatusService interface {
+	ProbeStatus() system.ProbeStatus
+}
+
 type Dependencies struct {
 	Telemetry   TelemetryService
 	Policy      PolicyService
 	Analysis    AnalysisService
 	Settings    SettingsService
 	Stats       StatsService
+	ProbeStatus ProbeStatusService
 	EventStream EventStream
 	AlertStream AlertStream
 }
@@ -82,6 +87,7 @@ type runtimeView interface {
 	Analysis() *analysis.Service
 	EventStream() *stream.Hub[telemetry.Event]
 	AlertStream() *stream.Hub[system.Alert]
+	ProbeStatus() system.ProbeStatus
 }
 
 func DependenciesFromRuntime(runtime runtimeView) Dependencies {
@@ -90,6 +96,7 @@ func DependenciesFromRuntime(runtime runtimeView) Dependencies {
 		Policy:      runtime.Policy(),
 		Settings:    runtime.Settings(),
 		Stats:       runtime.Stats(),
+		ProbeStatus: runtime,
 		EventStream: runtime.EventStream(),
 		AlertStream: runtime.AlertStream(),
 	}

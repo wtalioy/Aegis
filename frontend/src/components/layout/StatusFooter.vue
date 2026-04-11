@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { Boxes, Activity, Box } from 'lucide-vue-next'
 import { getSystemStats } from '../../lib/api'
 
@@ -9,6 +9,7 @@ interface SystemStats {
   eventsPerSec: number
   alertCount: number
   probeStatus: string
+  probeError?: string
 }
 
 const stats = ref<SystemStats>({
@@ -20,6 +21,21 @@ const stats = ref<SystemStats>({
 })
 
 let pollInterval: number | null = null
+
+const probeStatusLabel = computed(() => {
+  switch (stats.value.probeStatus) {
+    case 'active':
+      return 'Active'
+    case 'error':
+      return 'Error'
+    case 'stopped':
+      return 'Stopped'
+    case 'starting':
+      return 'Starting'
+    default:
+      return stats.value.probeStatus || 'Unknown'
+  }
+})
 
 const fetchStats = async () => {
   try {
@@ -45,11 +61,11 @@ onUnmounted(() => {
 <template>
   <footer class="status-footer">
     <div class="footer-left">
-      <div class="footer-item">
+      <div class="footer-item" :title="stats.probeError || ''">
         <Activity :size="14" class="footer-icon" :class="stats.probeStatus" />
         <span class="footer-label">eBPF:</span>
         <span class="footer-value" :class="stats.probeStatus">
-          {{ stats.probeStatus === 'active' ? 'Active' : stats.probeStatus }}
+          {{ probeStatusLabel }}
         </span>
       </div>
       <div class="footer-divider"></div>
@@ -102,6 +118,14 @@ onUnmounted(() => {
   color: var(--status-safe);
 }
 
+.footer-icon.error {
+  color: var(--status-critical);
+}
+
+.footer-icon.stopped {
+  color: var(--text-muted);
+}
+
 .footer-label {
   color: var(--text-muted);
 }
@@ -118,6 +142,10 @@ onUnmounted(() => {
 
 .footer-value.error {
   color: var(--status-critical);
+}
+
+.footer-value.stopped {
+  color: var(--text-muted);
 }
 
 .footer-divider {

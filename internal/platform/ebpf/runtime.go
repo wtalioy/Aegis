@@ -17,6 +17,10 @@ type Resources struct {
 }
 
 func Load(cfg internalconfig.Config) (*Resources, error) {
+	if err := ensureBPFLSMEnabled(); err != nil {
+		return nil, err
+	}
+
 	objects, err := LoadLSMObjects(cfg.Kernel.BPFPath, cfg.Kernel.RingBufferSize)
 	if err != nil {
 		return nil, fmt.Errorf("load eBPF objects: %w", err)

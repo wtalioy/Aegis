@@ -171,6 +171,41 @@ func TestV1AlertStreamPublishesSSE(t *testing.T) {
 	}
 }
 
+func TestV1SystemStatsReflectProbeLifecycle(t *testing.T) {
+	runtime := newRuntime(t)
+	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
+
+	readProbeStatus := func(t *testing.T) string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/system/stats", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected stats status 200, got %d with body %s", rec.Code, rec.Body.String())
+		}
+
+		var resp struct {
+			ProbeStatus string `json:"probeStatus"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode stats response: %v", err)
+		}
+		return resp.ProbeStatus
+	}
+
+	if got := readProbeStatus(t); got != system.ProbeStatusStarting {
+		t.Fatalf("expected initial probe status %q, got %q", system.ProbeStatusStarting, got)
+	}
+
+	if err := runtime.Stop(context.Background()); err != nil {
+		t.Fatalf("stop runtime: %v", err)
+	}
+
+	if got := readProbeStatus(t); got != system.ProbeStatusStopped {
+		t.Fatalf("expected stopped probe status %q, got %q", system.ProbeStatusStopped, got)
+	}
+}
+
 func TestOldAPIPathsAreNotRegistered(t *testing.T) {
 	runtime := newRuntime(t)
 	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)

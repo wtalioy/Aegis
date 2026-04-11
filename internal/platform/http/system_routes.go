@@ -19,12 +19,20 @@ func registerSystemRoutes(mux *http.ServeMux, deps Dependencies) {
 			processCount = deps.Telemetry.ProcessTree().Size()
 		}
 		execRate, fileRate, connectRate := deps.Stats.Rates()
+		probe := system.ProbeStatus{Status: system.ProbeStatusStarting}
+		if deps.ProbeStatus != nil {
+			probe = deps.ProbeStatus.ProbeStatus()
+			if probe.Status == "" {
+				probe.Status = system.ProbeStatusStarting
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"processCount":  processCount,
 			"workloadCount": deps.Stats.WorkloadCount(),
 			"eventsPerSec":  float64(execRate + fileRate + connectRate),
 			"alertCount":    int(deps.Stats.TotalAlertCount()),
-			"probeStatus":   "active",
+			"probeStatus":   probe.Status,
+			"probeError":    probe.Error,
 		})
 	})
 

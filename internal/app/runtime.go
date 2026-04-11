@@ -33,6 +33,7 @@ type Runtime struct {
 	pipeline    *IngestPipeline
 	eventStream *stream.Hub[telemetry.Event]
 	alertStream *stream.Hub[system.Alert]
+	probeState  system.ProbeStatus
 
 	mu          sync.RWMutex
 	resources   *internalebpf.Resources
@@ -76,6 +77,7 @@ func NewRuntime(cfg internalconfig.Config, configPath string) *Runtime {
 		analysis:    analysisService,
 		eventStream: stream.NewHub[telemetry.Event](),
 		alertStream: stream.NewHub[system.Alert](),
+		probeState:  system.ProbeStatus{Status: system.ProbeStatusStarting},
 		stopWatcher: make(chan struct{}),
 	}
 	runtime.settings.SetApplier(runtime)
@@ -89,9 +91,11 @@ func (r *Runtime) Start(ctx context.Context) error {
 		return nil
 	}
 	r.mu.Unlock()
+	r.setProbeStatus(system.ProbeStatusStarting, "")
 
 	resources, err := internalebpf.Load(r.cfg)
 	if err != nil {
+		r.setProbeStatus(system.ProbeStatusError, err.Error())
 		return err
 	}
 
@@ -111,6 +115,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 	r.wg.Add(2)
 	go r.runEventLoop()
 	go r.watchRulesFile()
+	r.setProbeStatus(system.ProbeStatusActive, "")
 
 	go func() {
 		<-ctx.Done()
@@ -134,6 +139,7 @@ func (r *Runtime) Stop(ctx context.Context) error {
 	r.mu.Lock()
 	resources := r.resources
 	r.resources = nil
+	r.probeState = system.ProbeStatus{Status: system.ProbeStatusStopped}
 	r.mu.Unlock()
 
 	if r.analysis != nil {
@@ -196,6 +202,12 @@ func (r *Runtime) AlertStream() *stream.Hub[system.Alert] {
 	return r.alertStream
 }
 
+func (r *Runtime) ProbeStatus() system.ProbeStatus {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.probeState
+}
+
 func (r *Runtime) ApplyConfig(oldCfg, newCfg internalconfig.Config, hotReloadedFields []string) error {
 	appliedCfg := r.liveConfigAfterHotReload(oldCfg, newCfg)
 
@@ -235,6 +247,7 @@ func (r *Runtime) runEventLoop() {
 			if errors.Is(err, syscall.EINTR) {
 				continue
 			}
+			r.setProbeStatus(system.ProbeStatusError, err.Error())
 			log.Printf("read ring buffer: %v", err)
 			return
 		}
@@ -247,6 +260,15 @@ func (r *Runtime) runEventLoop() {
 			log.Printf("decode raw event: %v", err)
 			continue
 		}
+	}
+}
+
+func (r *Runtime) setProbeStatus(status string, errMsg string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.probeState = system.ProbeStatus{
+		Status: status,
+		Error:  errMsg,
 	}
 }
 
