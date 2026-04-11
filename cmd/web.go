@@ -5,8 +5,6 @@ package main
 
 import (
 	"context"
-	"embed"
-	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -22,13 +20,13 @@ import (
 	httpapi "aegis/internal/platform/http"
 )
 
-//go:embed all:assets/frontend/dist
-var embeddedAssets embed.FS
-
 func main() {
 	cfg, configPath, err := internalconfig.Load(os.Args[1:])
 	if err != nil {
 		log.Fatalf("load config: %v", err)
+	}
+	if os.Geteuid() != 0 {
+		log.Fatalf("must run as root (current euid=%d)", os.Geteuid())
 	}
 
 	prewarmAIRuntime(cfg)
@@ -37,11 +35,10 @@ func main() {
 	runtimeApp := app.NewRuntime(cfg, configPath)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
-		if err := runtimeApp.Start(ctx); err != nil {
-			log.Printf("Runtime error: %v", err)
-		}
-	}()
+	if err := runtimeApp.Start(ctx); err != nil {
+		runtime.StopOllamaRuntime()
+		log.Fatalf("runtime start: %v", err)
+	}
 	if err := runWebServer(cfg, runtimeApp); err != nil {
 		log.Fatalf("aegis-web: %v", err)
 	}
@@ -59,10 +56,6 @@ func prewarmAIRuntime(cfg internalconfig.Config) {
 }
 
 func runWebServer(cfg internalconfig.Config, runtimeApp *app.Runtime) error {
-	if os.Geteuid() != 0 {
-		return fmt.Errorf("must run as root (current euid=%d)", os.Geteuid())
-	}
-
 	server := &http.Server{
 		Addr:    ":" + strconv.Itoa(cfg.Server.Port),
 		Handler: httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtimeApp), resolveAssets()),
@@ -87,11 +80,7 @@ func runWebServer(cfg internalconfig.Config, runtimeApp *app.Runtime) error {
 
 func resolveAssets() fs.FS {
 	if _, err := os.Stat("frontend/dist/index.html"); err == nil {
-		return os.DirFS(".")
+		return os.DirFS("frontend/dist")
 	}
-	assets, err := fs.Sub(embeddedAssets, "assets")
-	if err != nil {
-		return nil
-	}
-	return assets
+	return nil
 }
