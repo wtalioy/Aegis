@@ -23,7 +23,7 @@
 #define ACTION_MONITOR 1
 #define ACTION_BLOCK 2
 
-struct event_header {
+struct aegis_event_header {
     u64 timestamp_ns;
     u64 cgroup_id;
     u32 pid;
@@ -34,33 +34,33 @@ struct event_header {
     u8  blocked;
     u8  _pad[6];
     char comm[TASK_COMM_LEN];
-} __attribute__((packed));
+};
 
 struct exec_event {
-    struct event_header hdr;
+    struct aegis_event_header hdr;
     u32 ppid;
     u8  _pad[4];
     char pcomm[TASK_COMM_LEN];
     char filename[PATH_MAX_LEN];
     char command_line[COMMAND_LINE_LEN];
-} __attribute__((packed));
+};
 
 struct file_event {
-    struct event_header hdr;
+    struct aegis_event_header hdr;
     u64 ino;
     u64 dev;
     u32 flags;
     u8  _pad[4];
     char filename[PATH_MAX_LEN];
-} __attribute__((packed));
+};
 
 struct connect_event {
-    struct event_header hdr;
+    struct aegis_event_header hdr;
     u32 addr_v4;
     u16 family;
     u16 port;
     u8  addr_v6[16];
-} __attribute__((packed));
+};
 
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
@@ -109,7 +109,7 @@ struct {
 } event_scratch SEC(".maps");
 
 static __always_inline void fill_event_header(
-    struct event_header *hdr,
+    struct aegis_event_header *hdr,
     u8 type,
     struct task_struct *task
 ) {
