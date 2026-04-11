@@ -58,7 +58,8 @@ export interface AskInsightResponse {
   related_data?: any
 }
 
-const API_BASE = '/api'
+const ANALYSIS_API_BASE = '/api/v1/analysis'
+const SENTINEL_API_BASE = '/api/v1/sentinel'
 
 export function useAI() {
   const loading = ref(false)
@@ -68,7 +69,7 @@ export function useAI() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${API_BASE}/ai/generate-rule`, {
+      const response = await fetch(`${ANALYSIS_API_BASE}/generate-rule`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(req)
@@ -93,7 +94,7 @@ export function useAI() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${API_BASE}/ai/explain`, {
+      const response = await fetch(`${ANALYSIS_API_BASE}/explain`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(req)
@@ -115,7 +116,7 @@ export function useAI() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${API_BASE}/ai/analyze`, {
+      const response = await fetch(`${ANALYSIS_API_BASE}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(req)
@@ -138,7 +139,7 @@ export function useAI() {
 
   const getAIStatus = async (): Promise<any> => {
     try {
-      const res = await fetch(`${API_BASE}/ai/status`)
+      const res = await fetch(`${ANALYSIS_API_BASE}/status`)
       const text = await res.text()
       try { return text ? JSON.parse(text) : null } catch { return null }
     } catch {
@@ -150,7 +151,7 @@ export function useAI() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${API_BASE}/ai/sentinel/ask`, {
+      const response = await fetch(`${SENTINEL_API_BASE}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(req)
@@ -181,4 +182,3 @@ export function useAI() {
     getAIStatus
   }
 }
-

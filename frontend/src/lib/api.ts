@@ -13,6 +13,7 @@ export interface SystemStats {
     eventsPerSec: number
     alertCount: number
     probeStatus: string
+    probeError?: string
 }
 
 export interface Alert {
@@ -379,13 +380,19 @@ export async function clearChatHistory(sessionId: string): Promise<void> {
 
 // Settings API
 export interface AISettings {
-    mode: 'ollama' | 'openai'
+    mode: 'ollama' | 'openai' | 'gemini'
     ollama: {
         endpoint: string
         model: string
         timeout: number
     }
     openai: {
+        endpoint: string
+        apiKey: string
+        model: string
+        timeout: number
+    }
+    gemini: {
         endpoint: string
         apiKey: string
         model: string
@@ -414,13 +421,19 @@ export interface Settings {
         promotion_min_hits: number
     }
     analysis: {
-        mode: 'ollama' | 'openai' | 'disabled'
+        mode: 'ollama' | 'openai' | 'gemini' | 'disabled'
         ollama: {
             endpoint: string
             model: string
             timeout: number
         }
         openai: {
+            endpoint: string
+            api_key: string
+            model: string
+            timeout: number
+        }
+        gemini: {
             endpoint: string
             api_key: string
             model: string

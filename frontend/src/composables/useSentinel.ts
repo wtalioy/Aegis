@@ -17,7 +17,7 @@ export interface Insight {
   created_at: string
 }
 
-const API_BASE = '/api'
+const API_BASE = '/api/v1'
 
 export function useSentinel() {
   const insights = ref<Insight[]>([])
@@ -30,7 +30,7 @@ export function useSentinel() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${API_BASE}/ai/sentinel/insights?limit=${limit}`)
+      const response = await fetch(`${API_BASE}/sentinel/insights?limit=${limit}`)
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`)
       }
@@ -55,7 +55,7 @@ export function useSentinel() {
       eventSource.value = null
     }
 
-    const sseUrl = `${API_BASE}/ai/sentinel/stream`
+    const sseUrl = `${API_BASE}/sentinel/stream`
 
     try {
       eventSource.value = new EventSource(sseUrl)
@@ -143,7 +143,7 @@ export function useSentinel() {
       switch (actionId) {
         case 'promote':
           // Call promote rule API
-          const response = await fetch(`${API_BASE}/rules/${action.params.rule_name}/promote`, {
+          const response = await fetch(`${API_BASE}/policies/${action.params.rule_name}/promote`, {
             method: 'POST'
           })
           if (response.ok) {
@@ -190,4 +190,3 @@ export function useSentinel() {
     executeAction
   }
 }
-
