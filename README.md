@@ -47,7 +47,7 @@ make web
 
 ### 2. Configuration
 
-Aegis is configured via `config.yaml`. You must configure the AI section to enable intelligent features. The default configuration supports local inference via Ollama or remote inference via OpenAI-compatible APIs.
+Aegis is configured via `config.yaml`. You must configure the AI section to enable intelligent features. The default configuration supports local inference via Ollama or remote inference via APIs.
 
 ```yaml
 server:
@@ -119,16 +119,9 @@ Aegis consists of three main components:
 The project includes a `Makefile` to streamline development tasks:
 
 - `make bpf`: Compiles only the eBPF object files.
-- `make frontend`: Installs dependencies and builds the frontend assets.
 - `make web`: Builds the full application bundle.
 - `make run`: Builds and runs the application locally with `sudo`.
-- `make test-backend`: Runs the backend Go suite plus legacy-boundary checks.
 - `make clean`: Removes build artifacts.
-
-## Support
-
-- **Documentation**: Refer to the `docs/` directory.
-- **Demo Video**: [Aegis Demo Video](https://pan.baidu.com/s/1oGie3OranmrGJPs19qMc7Q?pwd=a2h4)
 
 ## License
 
