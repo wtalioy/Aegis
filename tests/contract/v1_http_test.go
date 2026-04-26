@@ -14,6 +14,7 @@ import (
 	"aegis/internal/app"
 	internalconfig "aegis/internal/platform/config"
 	httpapi "aegis/internal/platform/http"
+	"aegis/internal/policy"
 	"aegis/internal/system"
 )
 
@@ -137,6 +138,30 @@ func TestV1SettingsPutReturnsHotReloadMetadata(t *testing.T) {
 	}
 }
 
+func TestV1SettingsPutRejectsInvalidConfig(t *testing.T) {
+	runtime := newRuntime(t)
+	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
+
+	cfg := runtime.Settings().Get()
+	cfg.Server.Port = 0
+	body, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/system/settings", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "server.port must be greater than 0") {
+		t.Fatalf("expected validation error in response, got %s", rec.Body.String())
+	}
+}
+
 func TestV1AlertStreamPublishesSSE(t *testing.T) {
 	runtime := newRuntime(t)
 	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
@@ -206,14 +231,113 @@ func TestV1SystemStatsReflectProbeLifecycle(t *testing.T) {
 	}
 }
 
+func TestV1PolicyTestingEndpointsReturnEmptyAndPopulatedStates(t *testing.T) {
+	runtime := newRuntime(t)
+	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
+
+	t.Run("empty testing list", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/policies/testing", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d with body %s", rec.Code, rec.Body.String())
+		}
+
+		var payload []map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode testing list: %v", err)
+		}
+		if len(payload) != 0 {
+			t.Fatalf("expected no testing rules, got %+v", payload)
+		}
+	})
+
+	if err := runtime.Policy().Bootstrap([]policy.Rule{
+		{
+			Name:        "watch-file",
+			Description: "watch-file",
+			Severity:    "warning",
+			Action:      policy.ActionAlert,
+			Type:        policy.RuleTypeFile,
+			State:       policy.RuleStateTesting,
+			Match: policy.MatchCondition{
+				Filename: "/tmp/watch",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("bootstrap rules: %v", err)
+	}
+
+	t.Run("populated testing list", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/policies/testing", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d with body %s", rec.Code, rec.Body.String())
+		}
+
+		var payload []struct {
+			Name       string `json:"name"`
+			State      string `json:"state"`
+			Validation struct {
+				IsReady bool `json:"is_ready"`
+			} `json:"validation"`
+			Stats struct {
+				Hits int `json:"hits"`
+			} `json:"stats"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode testing list: %v", err)
+		}
+		if len(payload) != 1 || payload[0].Name != "watch-file" || payload[0].State != string(policy.RuleStateTesting) {
+			t.Fatalf("unexpected testing list payload: %+v", payload)
+		}
+		if payload[0].Validation.IsReady || payload[0].Stats.Hits != 0 {
+			t.Fatalf("expected unready testing rule with zero hits, got %+v", payload[0])
+		}
+	})
+
+	t.Run("validation detail", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/policies/validation/watch-file", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d with body %s", rec.Code, rec.Body.String())
+		}
+
+		var payload struct {
+			Name       string `json:"name"`
+			State      string `json:"state"`
+			Validation struct {
+				IsReady bool `json:"is_ready"`
+			} `json:"validation"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode validation payload: %v", err)
+		}
+		if payload.Name != "watch-file" || payload.State != string(policy.RuleStateTesting) || payload.Validation.IsReady {
+			t.Fatalf("unexpected validation payload: %+v", payload)
+		}
+	})
+}
+
 func TestOldAPIPathsAreNotRegistered(t *testing.T) {
 	runtime := newRuntime(t)
 	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/api"+"/stats", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected old route to be removed, got %d", rec.Code)
+	paths := []string{
+		"/api/stats",
+		"/api/events",
+		"/api/policies",
+		"/api/settings",
+	}
+
+	for _, path := range paths {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected old route %s to be removed, got %d", path, rec.Code)
+		}
 	}
 }

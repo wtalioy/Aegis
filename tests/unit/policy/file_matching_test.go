@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"aegis/internal/policy"
+	"aegis/internal/policy/rules"
 	"aegis/tests/helpers"
 )
 
@@ -22,7 +23,7 @@ func TestInodeMatchingWithHardlink(t *testing.T) {
 		t.Fatalf("failed to create hardlink: %v", err)
 	}
 
-	engine := policy.NewEngine([]policy.Rule{
+	engine := rules.NewEngine([]policy.Rule{
 		helpers.ActiveFileRule("Alert on sensitive file", original, policy.ActionAlert),
 	})
 
@@ -51,7 +52,7 @@ func TestFileRuleFallsBackToPathWhenInodeMissing(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "nonexistent.txt")
 
-	engine := policy.NewEngine([]policy.Rule{
+	engine := rules.NewEngine([]policy.Rule{
 		helpers.ActiveFileRule("Monitor missing file", target, policy.ActionAlert),
 	})
 
@@ -68,7 +69,7 @@ func TestFileRuleFallsBackToPathWhenInodeMissing(t *testing.T) {
 }
 
 func TestRelativePathRuleMatches(t *testing.T) {
-	engine := policy.NewEngine([]policy.Rule{
+	engine := rules.NewEngine([]policy.Rule{
 		helpers.ActiveFileRule("Docs file alert", "docs/readme.md", policy.ActionAlert),
 	})
 
@@ -79,7 +80,7 @@ func TestRelativePathRuleMatches(t *testing.T) {
 }
 
 func TestWildcardFilenameMatchesCanonicalForms(t *testing.T) {
-	engine := policy.NewEngine([]policy.Rule{
+	engine := rules.NewEngine([]policy.Rule{
 		helpers.ActiveFileRule("Monitor log dir", "/var/log/*", policy.ActionAlert),
 	})
 

@@ -3,10 +3,12 @@ package integration_test
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"aegis/internal/app"
 	internalconfig "aegis/internal/platform/config"
 	"aegis/internal/policy"
+	"aegis/internal/telemetry"
 	"aegis/tests/helpers"
 )
 
@@ -131,5 +133,125 @@ func TestSettingsServiceHotReloadsPolicyThresholds(t *testing.T) {
 	}
 	if !readiness.IsReady {
 		t.Fatalf("expected hot-reloaded thresholds to apply immediately, got %+v", readiness)
+	}
+}
+
+func TestRuntimeIngestPipelineAllowsExecRuleWithoutAlert(t *testing.T) {
+	cfg := internalconfig.Default(t.TempDir())
+	cfg.Analysis.Mode = "disabled"
+	cfg.Policy.RulesPath = filepath.Join(t.TempDir(), "rules.yaml")
+
+	runtime := app.NewRuntime(cfg, filepath.Join(t.TempDir(), "config.yaml"))
+	if err := runtime.Policy().Bootstrap([]policy.Rule{
+		{
+			Name:        "allow bash",
+			Description: "allow bash",
+			Severity:    "info",
+			Action:      policy.ActionAllow,
+			Type:        policy.RuleTypeExec,
+			State:       policy.RuleStateProduction,
+			Match: policy.MatchCondition{
+				ProcessName:     "bash",
+				ProcessNameType: policy.MatchTypeExact,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("bootstrap rules: %v", err)
+	}
+
+	event, decision, err := runtime.IngestPipeline().ProcessRawSample(
+		helpers.RawExecSample(5150, 5000, 88, "bash", "sshd", "/bin/bash", "bash -c id", false),
+	)
+	if err != nil {
+		t.Fatalf("process raw sample: %v", err)
+	}
+	if event == nil || event.Type != telemetry.EventTypeExec {
+		t.Fatalf("expected exec event, got %+v", event)
+	}
+	if decision.Type != policy.DecisionAllow {
+		t.Fatalf("expected allow decision, got %+v", decision)
+	}
+	if len(decision.Alerts) != 0 || len(runtime.Stats().Alerts()) != 0 {
+		t.Fatalf("expected allow path to avoid alerts, got decision=%+v stats=%+v", decision, runtime.Stats().Alerts())
+	}
+}
+
+func TestRuntimeIngestPipelineCreatesSyntheticKernelBlockAlerts(t *testing.T) {
+	cfg := internalconfig.Default(t.TempDir())
+	cfg.Analysis.Mode = "disabled"
+	cfg.Policy.RulesPath = filepath.Join(t.TempDir(), "rules.yaml")
+
+	runtime := app.NewRuntime(cfg, filepath.Join(t.TempDir(), "config.yaml"))
+	if err := runtime.Policy().Bootstrap(nil); err != nil {
+		t.Fatalf("bootstrap rules: %v", err)
+	}
+
+	fileEvent, fileDecision, err := runtime.IngestPipeline().ProcessRawSample(
+		helpers.RawFileSample(4200, 99, "bash", "/tmp/watch", 0, 1, 1, true),
+	)
+	if err != nil {
+		t.Fatalf("process blocked file sample: %v", err)
+	}
+	if fileEvent == nil || fileDecision.Type != policy.DecisionBlock || len(fileDecision.Alerts) != 1 {
+		t.Fatalf("unexpected blocked file decision: event=%+v decision=%+v", fileEvent, fileDecision)
+	}
+	if fileDecision.Alerts[0].RuleName != "Kernel Blocked File Access" || fileDecision.Alerts[0].Severity != "critical" {
+		t.Fatalf("unexpected blocked file alert: %+v", fileDecision.Alerts[0])
+	}
+
+	connectEvent, connectDecision, err := runtime.IngestPipeline().ProcessRawSample(
+		helpers.RawConnectSample(4200, 99, "bash", "192.168.1.10", 2, 4444, true),
+	)
+	if err != nil {
+		t.Fatalf("process blocked connect sample: %v", err)
+	}
+	if connectEvent == nil || connectDecision.Type != policy.DecisionBlock || len(connectDecision.Alerts) != 1 {
+		t.Fatalf("unexpected blocked connect decision: event=%+v decision=%+v", connectEvent, connectDecision)
+	}
+	if connectDecision.Alerts[0].RuleName != "Kernel Blocked Connection" || connectDecision.Alerts[0].Severity != "critical" {
+		t.Fatalf("unexpected blocked connect alert: %+v", connectDecision.Alerts[0])
+	}
+
+	if got := len(runtime.Stats().Alerts()); got != 2 {
+		t.Fatalf("expected synthetic alerts to be tracked in stats, got %d", got)
+	}
+}
+
+func TestRuntimeTelemetryQueryRemainsStableAcrossPagesAfterMultipleIngests(t *testing.T) {
+	cfg := internalconfig.Default(t.TempDir())
+	cfg.Analysis.Mode = "disabled"
+	cfg.Policy.RulesPath = filepath.Join(t.TempDir(), "rules.yaml")
+
+	runtime := app.NewRuntime(cfg, filepath.Join(t.TempDir(), "config.yaml"))
+	if err := runtime.Policy().Bootstrap(nil); err != nil {
+		t.Fatalf("bootstrap rules: %v", err)
+	}
+
+	samples := [][]byte{
+		helpers.RawExecSample(100, 1, 9, "bash", "init", "/bin/bash", "bash -c id", false),
+		helpers.RawFileSample(101, 9, "cat", "/tmp/one", 0, 2, 1, false),
+		helpers.RawConnectSample(102, 9, "curl", "10.0.0.5", 2, 443, false),
+	}
+	for _, sample := range samples {
+		if _, _, err := runtime.IngestPipeline().ProcessRawSample(sample); err != nil {
+			t.Fatalf("process raw sample: %v", err)
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	pageOne := runtime.Telemetry().Query(telemetry.Query{Page: 1, Limit: 2})
+	pageTwo := runtime.Telemetry().Query(telemetry.Query{Page: 2, Limit: 2})
+
+	if pageOne.Total != 3 || pageOne.TotalPages != 2 || len(pageOne.Events) != 2 {
+		t.Fatalf("unexpected page one result: %+v", pageOne)
+	}
+	if len(pageTwo.Events) != 1 {
+		t.Fatalf("unexpected page two result: %+v", pageTwo)
+	}
+	if pageOne.Events[0].Type != telemetry.EventTypeExec || pageOne.Events[1].Type != telemetry.EventTypeFile {
+		t.Fatalf("expected page one ordering to remain stable, got %+v", pageOne.Events)
+	}
+	if pageTwo.Events[0].Type != telemetry.EventTypeConnect {
+		t.Fatalf("expected page two to contain final event, got %+v", pageTwo.Events)
 	}
 }

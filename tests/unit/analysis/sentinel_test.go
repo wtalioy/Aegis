@@ -9,6 +9,7 @@ import (
 	"aegis/internal/platform/events"
 	"aegis/internal/platform/storage"
 	"aegis/internal/policy"
+	"aegis/internal/policy/rules"
 	"aegis/internal/telemetry/proc"
 	"aegis/tests/fakes"
 )
@@ -16,7 +17,7 @@ import (
 func TestSentinelPublishesTestingPromotionInsight(t *testing.T) {
 	provider := fakes.NewAIProvider()
 	service := aiservice.NewClient(provider)
-	engine := policy.NewEngine([]policy.Rule{
+	engine := rules.NewEngine([]policy.Rule{
 		{
 			Name:        "testing-shell",
 			Description: "testing-shell",
