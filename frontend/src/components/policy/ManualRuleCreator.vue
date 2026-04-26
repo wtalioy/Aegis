@@ -1,9 +1,9 @@
 <!-- Manual Rule Creator Component -->
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { FileCode, Trash2 } from 'lucide-vue-next'
 import Select from '../common/Select.vue'
-import type { Rule } from '../../types/rules'
+import type { Rule, RuleAction, RuleMatch, RuleState, RuleType } from '../../types/rules'
 
 const props = defineProps<{
   rule?: Rule | null
@@ -16,88 +16,101 @@ const emit = defineEmits<{
   'cancel': []
 }>()
 
-const ruleName = ref('')
-const description = ref('')
-const action = ref<'block' | 'monitor' | 'allow'>('monitor')
-const severity = ref<'critical' | 'high' | 'warning' | 'info'>('warning')
-const state = ref<'production' | 'testing' | 'draft'>('draft')
+const form = reactive({
+  name: '',
+  description: '',
+  action: 'alert' as RuleAction,
+  severity: 'warning' as 'critical' | 'high' | 'warning' | 'info',
+  state: 'draft' as RuleState,
+  matchType: 'exec' as RuleType,
+  processName: '',
+  filename: '',
+  destPort: '' as number | '',
+  destIp: '',
+  cgroupId: '',
+  uid: '' as number | ''
+})
 
-// Match conditions
-const matchType = ref<'exec' | 'file' | 'connect'>('exec')
-const processName = ref('')
-const filename = ref('')
-const destPort = ref<number | ''>('')
-const destIp = ref('')
-const cgroup = ref('')
-const uid = ref<number | ''>('')
+const matchFields: Record<RuleType, Array<keyof RuleMatch | 'processName' | 'filename' | 'destPort' | 'destIp'>> = {
+  exec: ['processName'],
+  file: ['filename'],
+  connect: ['destPort', 'destIp']
+}
 
 const canCreate = computed(() => {
-  if (!ruleName.value.trim() || !description.value.trim()) return false
+  if (!form.name.trim() || !form.description.trim()) return false
 
-  // At least one match condition must be set
-  if (matchType.value === 'exec' && !processName.value.trim()) return false
-  if (matchType.value === 'file' && !filename.value.trim()) return false
-  if (matchType.value === 'connect' && !destPort.value && !destIp.value.trim()) return false
+  if (form.matchType === 'exec' && !form.processName.trim()) return false
+  if (form.matchType === 'file' && !form.filename.trim()) return false
+  if (form.matchType === 'connect' && !form.destPort && !form.destIp.trim()) return false
 
   return true
 })
 
-// Initialize form from rule prop if editing
 watch(() => props.rule, (rule) => {
   if (rule) {
-    ruleName.value = rule.name || ''
-    description.value = rule.description || ''
-    // Handle 'alert' action (legacy) by mapping to 'monitor'
-    const ruleAction = (rule as any).action
-    action.value = (ruleAction === 'alert' ? 'monitor' : ruleAction) as 'block' | 'monitor' | 'allow'
-    severity.value = rule.severity as 'critical' | 'high' | 'warning' | 'info'
-    const rawState = (rule as any).state
-    if (rawState === 'testing' || rawState === 'production' || rawState === 'draft') {
-      state.value = rawState as 'production' | 'testing' | 'draft'
-    } else {
-      state.value = 'draft'
-    }
-
-    // Determine match type from match object
+    form.name = rule.name || ''
+    form.description = rule.description || ''
+    form.action = rule.action
+    form.severity = rule.severity as 'critical' | 'high' | 'warning' | 'info'
+    form.state = rule.state
     const match = rule.match || {}
-    if (match.process_name || match.process) {
-      matchType.value = 'exec'
-      processName.value = match.process_name || match.process || ''
+    if (match.processName) {
+      form.matchType = 'exec'
+      form.processName = match.processName
     } else if (match.filename) {
-      matchType.value = 'file'
-      filename.value = match.filename || ''
-    } else if (match.dest_port || match.dest_ip) {
-      matchType.value = 'connect'
-      destPort.value = match.dest_port ? Number(match.dest_port) : ''
-      destIp.value = match.dest_ip || ''
+      form.matchType = 'file'
+      form.filename = match.filename || ''
+    } else if (match.destPort || match.destIp) {
+      form.matchType = 'connect'
+      form.destPort = match.destPort ? Number(match.destPort) : ''
+      form.destIp = match.destIp || ''
     }
-
-    cgroup.value = match.cgroup_id || match.cgroup || ''
-    uid.value = match.uid ? Number(uid.value) : ''
+    form.cgroupId = match.cgroupId || ''
+    form.uid = match.uid ? Number(match.uid) : ''
+    return
   }
+  form.name = ''
+  form.description = ''
+  form.action = 'alert'
+  form.severity = 'warning'
+  form.state = 'draft'
+  form.matchType = 'exec'
+  form.processName = ''
+  form.filename = ''
+  form.destPort = ''
+  form.destIp = ''
+  form.cgroupId = ''
+  form.uid = ''
 }, { immediate: true })
 
+const buildMatch = (): RuleMatch => {
+  const match: RuleMatch = {}
+
+  if (form.matchType === 'exec' && form.processName.trim()) {
+    match.processName = form.processName.trim()
+  }
+  if (form.matchType === 'file' && form.filename.trim()) {
+    match.filename = form.filename.trim()
+  }
+  if (form.matchType === 'connect') {
+    if (form.destPort) match.destPort = Number(form.destPort)
+    if (form.destIp.trim()) match.destIp = form.destIp.trim()
+  }
+  if (form.cgroupId.trim()) match.cgroupId = form.cgroupId.trim()
+  if (form.uid) match.uid = Number(form.uid)
+
+  return match
+}
+
 const generateYaml = (): string => {
-  const match: Record<string, any> = {}
+  const match = buildMatch()
 
-  if (matchType.value === 'exec' && processName.value.trim()) {
-    match.process_name = processName.value.trim()
-  }
-  if (matchType.value === 'file' && filename.value.trim()) {
-    match.filename = filename.value.trim()
-  }
-  if (matchType.value === 'connect') {
-    if (destPort.value) match.dest_port = Number(destPort.value)
-    if (destIp.value.trim()) match.dest_ip = destIp.value.trim()
-  }
-  if (cgroup.value.trim()) match.cgroup_id = cgroup.value.trim()
-  if (uid.value) match.uid = Number(uid.value)
-
-  const rule: any = {
-    name: ruleName.value.trim(),
-    description: description.value.trim(),
-    action: action.value,
-    severity: severity.value,
+  const rule = {
+    name: form.name.trim(),
+    description: form.description.trim(),
+    action: form.action,
+    severity: form.severity,
     match
   }
 
@@ -117,28 +130,14 @@ const generateYaml = (): string => {
 const createRule = () => {
   if (!canCreate.value) return
 
-  const match: Record<string, any> = {}
-
-  if (matchType.value === 'exec' && processName.value.trim()) {
-    match.process_name = processName.value.trim()
-  }
-  if (matchType.value === 'file' && filename.value.trim()) {
-    match.filename = filename.value.trim()
-  }
-  if (matchType.value === 'connect') {
-    if (destPort.value) match.dest_port = Number(destPort.value)
-    if (destIp.value.trim()) match.dest_ip = destIp.value.trim()
-  }
-  if (cgroup.value.trim()) match.cgroup_id = cgroup.value.trim()
-  if (uid.value) match.uid = Number(uid.value)
-
-  const rule: any = {
-    name: ruleName.value.trim(),
-    description: description.value.trim(),
-    action: action.value,
-    severity: severity.value,
-    state: state.value,
-    match,
+  const rule: Rule = {
+    name: form.name.trim(),
+    description: form.description.trim(),
+    action: form.action,
+    severity: form.severity,
+    state: form.state,
+    type: form.matchType,
+    match: buildMatch(),
     yaml: generateYaml()
   }
 
@@ -166,11 +165,11 @@ const deleteRule = () => {
         <h4 class="section-title">Basic Information</h4>
         <div class="form-group">
           <label class="form-label">Rule Name *</label>
-          <input v-model="ruleName" type="text" class="form-input" placeholder="e.g., Block Suspicious Process" />
+          <input v-model="form.name" type="text" class="form-input" placeholder="e.g., Block Suspicious Process" />
         </div>
         <div class="form-group">
           <label class="form-label">Description *</label>
-          <textarea v-model="description" class="form-textarea" rows="3"
+          <textarea v-model="form.description" class="form-textarea" rows="3"
             placeholder="Describe what this rule detects or blocks" />
         </div>
       </div>
@@ -181,15 +180,15 @@ const deleteRule = () => {
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Action</label>
-            <Select v-model="action" :options="[
+            <Select v-model="form.action" :options="[
               { value: 'block', label: 'Block' },
-              { value: 'monitor', label: 'Monitor' },
+              { value: 'alert', label: 'Alert' },
               { value: 'allow', label: 'Allow' }
             ]" />
           </div>
           <div class="form-group">
             <label class="form-label">Severity</label>
-            <Select v-model="severity" :options="[
+            <Select v-model="form.severity" :options="[
               { value: 'critical', label: 'Critical' },
               { value: 'high', label: 'High' },
               { value: 'warning', label: 'Warning' },
@@ -198,7 +197,7 @@ const deleteRule = () => {
           </div>
           <div class="form-group">
             <label class="form-label">State</label>
-            <Select v-model="state" :options="[
+            <Select v-model="form.state" :options="[
               { value: 'draft', label: 'Draft' },
               { value: 'testing', label: 'Testing' },
               { value: 'production', label: 'Production' }
@@ -212,7 +211,7 @@ const deleteRule = () => {
         <h4 class="section-title">Match Conditions</h4>
         <div class="form-group">
           <label class="form-label">Match Type *</label>
-          <Select v-model="matchType" :options="[
+          <Select v-model="form.matchType" :options="[
             { value: 'exec', label: 'Process Execution' },
             { value: 'file', label: 'File Access' },
             { value: 'connect', label: 'Network Connection' }
@@ -220,26 +219,26 @@ const deleteRule = () => {
         </div>
 
         <!-- Exec Match -->
-        <div v-if="matchType === 'exec'" class="form-group">
+        <div v-if="matchFields.exec && form.matchType === 'exec'" class="form-group">
           <label class="form-label">Process Name *</label>
-          <input v-model="processName" type="text" class="form-input" placeholder="e.g., /usr/bin/bash" />
+          <input v-model="form.processName" type="text" class="form-input" placeholder="e.g., /usr/bin/bash" />
         </div>
 
         <!-- File Match -->
-        <div v-if="matchType === 'file'" class="form-group">
+        <div v-if="matchFields.file && form.matchType === 'file'" class="form-group">
           <label class="form-label">File Path *</label>
-          <input v-model="filename" type="text" class="form-input" placeholder="e.g., /tmp/suspicious.sh" />
+          <input v-model="form.filename" type="text" class="form-input" placeholder="e.g., /tmp/suspicious.sh" />
         </div>
 
         <!-- Connect Match -->
-        <div v-if="matchType === 'connect'" class="form-row">
+        <div v-if="matchFields.connect && form.matchType === 'connect'" class="form-row">
           <div class="form-group">
             <label class="form-label">Destination Port</label>
-            <input v-model.number="destPort" type="number" class="form-input" placeholder="e.g., 3306" />
+            <input v-model.number="form.destPort" type="number" class="form-input" placeholder="e.g., 3306" />
           </div>
           <div class="form-group">
             <label class="form-label">Destination IP</label>
-            <input v-model="destIp" type="text" class="form-input" placeholder="e.g., 192.168.1.100" />
+            <input v-model="form.destIp" type="text" class="form-input" placeholder="e.g., 192.168.1.100" />
           </div>
         </div>
 
@@ -247,11 +246,11 @@ const deleteRule = () => {
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Cgroup (optional)</label>
-            <input v-model="cgroup" type="text" class="form-input" placeholder="e.g., /system.slice/nginx.service" />
+            <input v-model="form.cgroupId" type="text" class="form-input" placeholder="e.g., /system.slice/nginx.service" />
           </div>
           <div class="form-group">
             <label class="form-label">UID (optional)</label>
-            <input v-model.number="uid" type="number" class="form-input" placeholder="e.g., 1000" />
+            <input v-model.number="form.uid" type="number" class="form-input" placeholder="e.g., 1000" />
           </div>
         </div>
       </div>

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { CheckCircle2, AlertTriangle } from 'lucide-vue-next'
+import type { TestingRule } from '../../types/rules'
+import { getSettings } from '../../lib/api'
 
-const props = defineProps<{ validationData: any }>()
+const props = defineProps<{ validationData: TestingRule | null }>()
 
 // Default values (from config defaults)
 const promotionMinObservationMinutes = ref(1440) // 24 hours in minutes
@@ -11,15 +13,12 @@ const promotionMinHits = ref(100)
 // Fetch config from API
 onMounted(async () => {
   try {
-    const response = await fetch('/api/v1/system/settings')
-    if (response.ok) {
-      const settings = await response.json()
-      if (settings.policy?.promotion_min_observation_minutes) {
-        promotionMinObservationMinutes.value = settings.policy.promotion_min_observation_minutes
-      }
-      if (settings.policy?.promotion_min_hits) {
-        promotionMinHits.value = settings.policy.promotion_min_hits
-      }
+    const settings = await getSettings()
+    if (settings.policy?.promotion_min_observation_minutes) {
+      promotionMinObservationMinutes.value = settings.policy.promotion_min_observation_minutes
+    }
+    if (settings.policy?.promotion_min_hits) {
+      promotionMinHits.value = settings.policy.promotion_min_hits
     }
   } catch (e) {
     // Use default if API fails
@@ -27,8 +26,8 @@ onMounted(async () => {
   }
 })
 
-const observationMinutes = computed(() => props.validationData?.stats?.observationMinutes ?? props.validationData?.stats?.ObservationMinutes ?? 0)
-const hitCount = computed(() => props.validationData?.stats?.hits ?? props.validationData?.stats?.matchCount ?? props.validationData?.stats?.matches ?? 0)
+const observationMinutes = computed(() => props.validationData?.stats?.observationMinutes ?? 0)
+const hitCount = computed(() => props.validationData?.stats?.hits ?? 0)
 
 // Progress based on promotion minimum observation time
 const obsPercent = computed(() => Math.min(100, (observationMinutes.value / promotionMinObservationMinutes.value) * 100))

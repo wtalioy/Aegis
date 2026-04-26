@@ -1,8 +1,6 @@
 package providers
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,6 +13,34 @@ import (
 	"aegis/internal/platform/ai/prompt"
 	"aegis/internal/platform/config"
 )
+
+type openAIChatRequest struct {
+	Model       string              `json:"model"`
+	Messages    []map[string]string `json:"messages"`
+	Temperature float64             `json:"temperature"`
+	MaxTokens   int                 `json:"max_tokens"`
+	Stream      bool                `json:"stream,omitempty"`
+}
+
+type openAIChatResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+	Error struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+type openAIStreamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+		FinishReason string `json:"finish_reason"`
+	} `json:"choices"`
+}
 
 type OpenAIProvider struct {
 	endpoint     string
@@ -53,23 +79,15 @@ func (o *OpenAIProvider) SingleChat(ctx context.Context, userPrompt string) (str
 }
 
 func (o *OpenAIProvider) MultiChat(ctx context.Context, messages []types.Message) (string, error) {
-	openaiMessages := ToRoleContent(messages)
-
-	reqBody := map[string]any{
-		"model":       o.model,
-		"messages":    openaiMessages,
-		"temperature": 0.4,
-		"max_tokens":  2048,
-	}
-
-	body, _ := json.Marshal(reqBody)
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		o.endpoint+"/v1/chat/completions", bytes.NewReader(body))
+	req, err := newJSONRequest(ctx, http.MethodPost, o.endpoint+"/v1/chat/completions", openAIChatRequest{
+		Model:       o.model,
+		Messages:    ToRoleContent(messages),
+		Temperature: defaultChatTemperature,
+		MaxTokens:   defaultMaxTokens,
+	})
 	if err != nil {
 		return "", err
 	}
-
-	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+o.apiKey)
 
 	resp, err := o.client.Do(req)
@@ -77,19 +95,12 @@ func (o *OpenAIProvider) MultiChat(ctx context.Context, messages []types.Message
 		return "", fmt.Errorf("API request failed: %w", err)
 	}
 	defer resp.Body.Close()
-
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		Error struct {
-			Message string `json:"message"`
-		} `json:"error"`
+	if resp.StatusCode != http.StatusOK {
+		return "", unexpectedStatus("OpenAI", resp.StatusCode)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var result openAIChatResponse
+	if err := decodeJSONResponse(resp, &result); err != nil {
 		return "", err
 	}
 	if result.Error.Message != "" {
@@ -110,24 +121,16 @@ func (o *OpenAIProvider) CheckHealth(ctx context.Context) error {
 }
 
 func (o *OpenAIProvider) MultiChatStream(ctx context.Context, messages []types.Message) (<-chan StreamToken, error) {
-	openaiMessages := ToRoleContent(messages)
-
-	reqBody := map[string]any{
-		"model":       o.model,
-		"messages":    openaiMessages,
-		"temperature": 0.4,
-		"max_tokens":  2048,
-		"stream":      true,
-	}
-
-	body, _ := json.Marshal(reqBody)
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		o.endpoint+"/v1/chat/completions", bytes.NewReader(body))
+	req, err := newJSONRequest(ctx, http.MethodPost, o.endpoint+"/v1/chat/completions", openAIChatRequest{
+		Model:       o.model,
+		Messages:    ToRoleContent(messages),
+		Temperature: defaultChatTemperature,
+		MaxTokens:   defaultMaxTokens,
+		Stream:      true,
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+o.apiKey)
 
 	resp, err := o.streamClient.Do(req)
@@ -136,7 +139,7 @@ func (o *OpenAIProvider) MultiChatStream(ctx context.Context, messages []types.M
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
-		return nil, fmt.Errorf("OpenAI returned status %d", resp.StatusCode)
+		return nil, unexpectedStatus("OpenAI", resp.StatusCode)
 	}
 
 	tokenChan := make(chan StreamToken, 100)
@@ -145,9 +148,7 @@ func (o *OpenAIProvider) MultiChatStream(ctx context.Context, messages []types.M
 		defer close(tokenChan)
 		defer resp.Body.Close()
 
-		scanner := bufio.NewScanner(resp.Body)
-		buf := make([]byte, 64*1024)
-		scanner.Buffer(buf, 1024*1024)
+		scanner := newStreamScanner(resp)
 
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
@@ -164,15 +165,7 @@ func (o *OpenAIProvider) MultiChatStream(ctx context.Context, messages []types.M
 				return
 			}
 
-			var chunk struct {
-				Choices []struct {
-					Delta struct {
-						Content string `json:"content"`
-					} `json:"delta"`
-					FinishReason string `json:"finish_reason"`
-				} `json:"choices"`
-			}
-
+			var chunk openAIStreamChunk
 			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 				tokenChan <- StreamToken{Error: fmt.Errorf("failed to parse stream chunk: %w", err)}
 				return

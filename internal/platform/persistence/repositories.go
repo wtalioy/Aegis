@@ -9,6 +9,7 @@ import (
 
 	"aegis/internal/platform/config"
 	"aegis/internal/policy"
+	"aegis/internal/policy/rules"
 	"gopkg.in/yaml.v3"
 )
 
@@ -41,7 +42,7 @@ func (r *RuleRepository) Load() ([]policy.Rule, error) {
 		}
 	}
 
-	if errs := policy.ValidateRules(ruleSet.Rules); len(errs) > 0 {
+	if errs := rules.ValidateRules(ruleSet.Rules); len(errs) > 0 {
 		var b strings.Builder
 		b.WriteString("rule validation failed:\n")
 		for _, err := range errs {
@@ -58,7 +59,7 @@ func (r *RuleRepository) Load() ([]policy.Rule, error) {
 func (r *RuleRepository) Save(ruleList []policy.Rule) error {
 	cleanRules := make([]policy.Rule, len(ruleList))
 	for i, rule := range ruleList {
-		cleanRules[i] = policy.CleanRuleForYAML(rule)
+		cleanRules[i] = rules.CleanRuleForYAML(rule)
 	}
 
 	ruleSet := policy.RuleSet{Rules: cleanRules}

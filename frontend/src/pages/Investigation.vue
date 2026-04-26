@@ -1,119 +1,25 @@
 <!-- Investigation Page - Phase 4: AI-Assisted Threat Hunting -->
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { useInvestigation } from '../composables/useInvestigation'
+import { useInvestigationPage } from '../composables/useInvestigationPage'
 import EventList from '../components/investigation/EventList.vue'
 import AIContextPanel from '../components/investigation/AIContextPanel.vue'
-import { Lightbulb, Search, X, CheckCircle2 } from 'lucide-vue-next'
-const { state, searchEvents, explainSelectedEvent, loading, loadMoreEvents, hasMore, loadingMore, refreshEvents, typeCounts } = useInvestigation()
-const filterType = ref<string>('all')
-const route = useRoute()
-const searchQuery = ref(route.query.search as string || '')
-const sortBy = ref<'time' | 'pid' | 'type' | 'process'>('time')
-const sortDir = ref<'asc' | 'desc'>('desc')
+import { Search, X, CheckCircle2 } from 'lucide-vue-next'
 
-// Auto-refresh events every 5 seconds
-let refreshInterval: ReturnType<typeof setInterval> | null = null
-
-const startAutoRefresh = () => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-  }
-  refreshInterval = setInterval(async () => {
-    // Only refresh if not currently loading and no active search query
-    if (!loading.value && !searchQuery.value.trim()) {
-      await refreshEvents()
-    }
-  }, 5000) // Refresh every 5 seconds
-}
-
-const stopAutoRefresh = () => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-    refreshInterval = null
-  }
-}
-
-const handleEventSelect = async (event: any) => {
-  // Do not auto-analyze. Only set the selected event.
-  state.value.selectedEvent = event
-}
-
-const filteredEvents = computed(() => {
-  let result = state.value.events
-
-  // Filter by type
-  if (filterType.value !== 'all') {
-    result = result.filter(e => e.type === filterType.value)
-  }
-
-  // Filter by search query
-  if (searchQuery.value.trim()) {
-    const query = searchQuery.value.toLowerCase()
-    result = result.filter(e =>
-      (e.header?.comm || '').toLowerCase().includes(query) ||
-      String(e.header?.pid || '').includes(query) ||
-      (e.type || '').toLowerCase().includes(query)
-    )
-  }
-
-  return result
-})
-
-// Use type counts from backend instead of calculating from loaded events
-const eventTypeCounts = computed(() => typeCounts.value)
-
-const sortedEvents = computed(() => {
-  const arr = [...filteredEvents.value]
-  const dir = sortDir.value === 'asc' ? 1 : -1
-  const cmpStr = (a: string, b: string) => a.localeCompare(b) * dir
-  const cmpNum = (a: number, b: number) => ((a ?? 0) - (b ?? 0)) * dir
-  switch (sortBy.value) {
-    case 'time':
-      arr.sort((a, b) => cmpNum(a.header?.timestamp || 0, b.header?.timestamp || 0))
-      break
-    case 'pid':
-      arr.sort((a, b) => cmpNum(a.header?.pid || 0, b.header?.pid || 0))
-      break
-    case 'type':
-      arr.sort((a, b) => cmpStr(a.type || '', b.type || ''))
-      break
-    case 'process':
-      arr.sort((a, b) => cmpStr(a.header?.comm || '', b.header?.comm || ''))
-      break
-  }
-  return arr
-})
-
-const changeSort = (field: 'time' | 'pid' | 'type' | 'process') => {
-  if (sortBy.value === field) {
-    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortBy.value = field
-    // default directions: newest first for time, largest first for pid
-    sortDir.value = field === 'time' || field === 'pid' ? 'desc' : 'asc'
-  }
-}
-
-onMounted(async () => {
-  // Load initial events on page load
-  await searchEvents({
-    filter: {
-      types: [],
-      processes: [],
-      pids: []
-    },
-    page: 1,
-    limit: 50
-  })
-  // Start auto-refresh after initial load
-  startAutoRefresh()
-})
-
-onUnmounted(() => {
-  stopAutoRefresh()
-})
+const {
+  state,
+  loading,
+  loadMoreEvents,
+  hasMore,
+  loadingMore,
+  filterType,
+  searchQuery,
+  sortBy,
+  sortDir,
+  eventTypeCounts,
+  sortedEvents,
+  handleEventSelect,
+  changeSort
+} = useInvestigationPage()
 </script>
 
 <template>
@@ -185,7 +91,7 @@ onUnmounted(() => {
 
       <!-- Right Panel: AI Context -->
       <div class="context-panel">
-        <AIContextPanel :event="state.selectedEvent" :process-id="state.selectedEvent?.header?.pid"
+        <AIContextPanel :event="state.selectedEvent" :process-id="state.selectedEvent?.pid"
           style="flex:1 1 0; min-height:0;" />
 
       </div>

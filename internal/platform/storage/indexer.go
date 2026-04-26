@@ -41,42 +41,14 @@ func (idx *Indexer) IndexEvent(event *Event) {
 	idx.addToIndex(&eventList, event)
 	idx.typeIndex[event.Type] = eventList
 
-	// Extract PID and other fields from event data
-	var pid uint32
-	var cgroupID uint64
-	var processName string
-
-	switch event.Type {
-	case events.EventTypeExec:
-		switch v := event.Data.(type) {
-		case *events.ExecEvent:
-			pid = v.Hdr.PID
-			cgroupID = v.Hdr.CgroupID
-			processName = extractCString(v.Hdr.Comm[:])
-		case events.ExecEvent:
-			pid = v.Hdr.PID
-			cgroupID = v.Hdr.CgroupID
-			processName = extractCString(v.Hdr.Comm[:])
-		}
-	case events.EventTypeFileOpen:
-		switch v := event.Data.(type) {
-		case *events.FileOpenEvent:
-			pid = v.Hdr.PID
-			cgroupID = v.Hdr.CgroupID
-		case events.FileOpenEvent:
-			pid = v.Hdr.PID
-			cgroupID = v.Hdr.CgroupID
-		}
-	case events.EventTypeConnect:
-		switch v := event.Data.(type) {
-		case *events.ConnectEvent:
-			pid = v.Hdr.PID
-			cgroupID = v.Hdr.CgroupID
-		case events.ConnectEvent:
-			pid = v.Hdr.PID
-			cgroupID = v.Hdr.CgroupID
-		}
+	view, ok := View(event)
+	if !ok {
+		return
 	}
+
+	pid := view.PID
+	cgroupID := view.CgroupID
+	processName := view.ProcessName
 
 	// Index by PID
 	if pid != 0 {

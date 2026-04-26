@@ -1,16 +1,25 @@
 <!-- Observatory Page - Phase 4: AI-Driven Situational Awareness -->
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { getSystemStats, getAlerts, getRules, type SystemStats, type Alert, type DetectionRule } from '../lib/api'
+import { getSystemStats, getAlerts, getRules, type SystemStats, type Alert } from '../lib/api'
+import type { Rule } from '../types/rules'
 import AIHealthScore from '../components/observatory/AIHealthScore.vue'
 import AIThreatSummary from '../components/observatory/AIThreatSummary.vue'
 import DefenseStats from '../components/observatory/DefenseStats.vue'
 import SentinelPreview from '../components/observatory/SentinelPreview.vue'
 import QuickAsk from '../components/ai/QuickAsk.vue'
 
+interface ThreatSummary {
+  type: string
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  count: number
+  description: string
+  ruleName: string
+}
+
 const stats = ref<SystemStats | null>(null)
 const alerts = ref<Alert[]>([])
-const rules = ref<DetectionRule[]>([])
+const rules = ref<Rule[]>([])
 const loading = ref(true)
 
 // Calculate health score from real data
@@ -110,7 +119,7 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter()
 
-const handleThreatClick = (threat: any) => {
+const handleThreatClick = (threat: ThreatSummary) => {
   if (threat.ruleName) {
     router.push({ name: 'investigation', query: { search: threat.ruleName } })
   }
@@ -120,8 +129,8 @@ const handleThreatClick = (threat: any) => {
 const defenseStats = computed(() => {
   const totalBlocks = alerts.value.filter(a => a.blocked).length
   const highSeverityAlerts = alerts.value.filter(a => a.severity === 'high' || a.severity === 'critical').length
-  const activeRules = rules.value.filter(r => (r as any).state === 'production' || (r as any).state === 'testing').length
-  const testingRules = rules.value.filter(r => (r as any).state === 'testing').length
+  const activeRules = rules.value.filter(r => r.state === 'production' || r.state === 'testing').length
+  const testingRules = rules.value.filter(r => r.state === 'testing').length
 
   // Defense rate: considers blocks against high-severity threats
   const defenseRate = highSeverityAlerts > 0

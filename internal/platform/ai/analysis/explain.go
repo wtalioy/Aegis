@@ -12,7 +12,6 @@ import (
 	"aegis/internal/platform/events"
 	"aegis/internal/platform/storage"
 	"aegis/internal/policy"
-	"aegis/internal/shared/utils"
 	"aegis/internal/telemetry/proc"
 	"aegis/internal/telemetry/workload"
 )
@@ -36,21 +35,8 @@ func ExplainEvent(
 	var relatedEvents []types.RelatedEvent
 	var pid uint32
 
-	switch ev := event.Data.(type) {
-	case *events.ExecEvent:
-		pid = ev.Hdr.PID
-	case *events.FileOpenEvent:
-		pid = ev.Hdr.PID
-	case *events.ConnectEvent:
-		pid = ev.Hdr.PID
-	case map[string]any:
-		if v, ok := ev["pid"].(float64); ok {
-			pid = uint32(v)
-		} else if hdr, ok := ev["header"].(map[string]any); ok {
-			if v, ok := hdr["pid"].(float64); ok {
-				pid = uint32(v)
-			}
-		}
+	if view, ok := storage.View(event); ok {
+		pid = view.PID
 	}
 
 	if store != nil && pid != 0 {
@@ -83,7 +69,7 @@ func ExplainEvent(
 		_ = matchedRule
 	}
 
-	actions := generateSuggestedActions(event, matchedRule)
+	actions := generateSuggestedActions(req.EventID, matchedRule)
 
 	return &types.ExplainResponse{
 		Explanation:      explanation,
@@ -105,21 +91,21 @@ func extractRootCause(response string) string {
 	return ""
 }
 
-func generateSuggestedActions(event *storage.Event, rule *policy.Rule) []types.Action {
+func generateSuggestedActions(eventID string, rule *policy.Rule) []types.Action {
 	actions := []types.Action{}
 
 	if rule != nil && rule.IsTesting() {
 		actions = append(actions, types.Action{
 			Label:    "转正规则",
 			ActionID: "promote",
-			Params:   map[string]any{"rule_name": rule.Name},
+			Params:   types.ActionParams{RuleName: rule.Name},
 		})
 	}
 
 	actions = append(actions, types.Action{
 		Label:    "调查",
 		ActionID: "investigate",
-		Params:   map[string]any{"event_id": fmt.Sprintf("%v", event)},
+		Params:   types.ActionParams{EventID: eventID},
 	})
 
 	return actions
@@ -132,53 +118,28 @@ func relatedEventFromStorage(event *storage.Event) types.RelatedEvent {
 
 	related := types.RelatedEvent{
 		Timestamp: event.Timestamp.UnixMilli(),
-		Details:   map[string]any{},
 	}
 
-	switch ev := event.Data.(type) {
-	case *events.ExecEvent:
-		related.Type = "exec"
-		related.PID = ev.Hdr.PID
-		related.CgroupID = fmt.Sprintf("%d", ev.Hdr.CgroupID)
-		related.ProcessName = utils.ExtractCString(ev.Hdr.Comm[:])
-		related.Blocked = ev.Hdr.Blocked == 1
-		related.Details["ppid"] = ev.PPID
-	case events.ExecEvent:
-		related.Type = "exec"
-		related.PID = ev.Hdr.PID
-		related.CgroupID = fmt.Sprintf("%d", ev.Hdr.CgroupID)
-		related.ProcessName = utils.ExtractCString(ev.Hdr.Comm[:])
-		related.Blocked = ev.Hdr.Blocked == 1
-		related.Details["ppid"] = ev.PPID
-	case *events.FileOpenEvent:
-		related.Type = "file"
-		related.PID = ev.Hdr.PID
-		related.CgroupID = fmt.Sprintf("%d", ev.Hdr.CgroupID)
-		related.ProcessName = utils.ExtractCString(ev.Hdr.Comm[:])
-		related.Blocked = ev.Hdr.Blocked == 1
-		related.Details["filename"] = utils.ExtractCString(ev.Filename[:])
-	case events.FileOpenEvent:
-		related.Type = "file"
-		related.PID = ev.Hdr.PID
-		related.CgroupID = fmt.Sprintf("%d", ev.Hdr.CgroupID)
-		related.ProcessName = utils.ExtractCString(ev.Hdr.Comm[:])
-		related.Blocked = ev.Hdr.Blocked == 1
-		related.Details["filename"] = utils.ExtractCString(ev.Filename[:])
-	case *events.ConnectEvent:
-		related.Type = "connect"
-		related.PID = ev.Hdr.PID
-		related.CgroupID = fmt.Sprintf("%d", ev.Hdr.CgroupID)
-		related.ProcessName = utils.ExtractCString(ev.Hdr.Comm[:])
-		related.Blocked = ev.Hdr.Blocked == 1
-		related.Details["port"] = ev.Port
-	case events.ConnectEvent:
-		related.Type = "connect"
-		related.PID = ev.Hdr.PID
-		related.CgroupID = fmt.Sprintf("%d", ev.Hdr.CgroupID)
-		related.ProcessName = utils.ExtractCString(ev.Hdr.Comm[:])
-		related.Blocked = ev.Hdr.Blocked == 1
-		related.Details["port"] = ev.Port
+	view, ok := storage.View(event)
+	if !ok {
+		return related
 	}
+
+	switch view.Type {
+	case events.EventTypeExec:
+		related.Type = "exec"
+		related.PPID = view.PPID
+	case events.EventTypeFileOpen:
+		related.Type = "file"
+		related.Filename = view.Filename
+	case events.EventTypeConnect:
+		related.Type = "connect"
+		related.Port = view.Port
+	}
+	related.PID = view.PID
+	related.CgroupID = fmt.Sprintf("%d", view.CgroupID)
+	related.ProcessName = view.ProcessName
+	related.Blocked = view.Blocked
 
 	return related
 }

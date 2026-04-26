@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { marked } from 'marked'
 import { Sparkles, CheckCircle2, AlertTriangle, TrendingUp, Lightbulb } from 'lucide-vue-next'
-import type { Insight } from '../../composables/useSentinel'
+import type { Insight } from '../../types/sentinel'
 import AIConfidenceBadge from '../ai/AIConfidenceBadge.vue'
 
 // Configure marked
@@ -35,13 +35,13 @@ const severityColor = computed(() => {
 
 const typeIcon = computed(() => {
   switch (props.insight.type) {
-    case 'testing_promotion':
+    case 'testingPromotion':
       return CheckCircle2
     case 'anomaly':
       return AlertTriangle
     case 'optimization':
       return TrendingUp
-    case 'daily_report':
+    case 'dailyReport':
       return Lightbulb
     default:
       return Sparkles
@@ -53,22 +53,22 @@ const displayType = computed(() => String(props.insight.type).replace('_', ' '))
 const formatTime = computed(() => {
   // Parse the timestamp - handle both ISO string and Unix timestamp
   let date: Date
-  const created_at = props.insight.created_at
+  const createdAt = props.insight.createdAt
 
-  if (typeof created_at === 'string') {
+  if (typeof createdAt === 'string') {
     // Try parsing as ISO string first
-    date = new Date(created_at)
+    date = new Date(createdAt)
     // If invalid, try parsing as Unix timestamp (seconds)
     if (isNaN(date.getTime())) {
-      const timestamp = parseInt(created_at, 10)
+      const timestamp = parseInt(createdAt, 10)
       if (!isNaN(timestamp)) {
         // If timestamp is in seconds (less than year 2000 in milliseconds), convert to milliseconds
         date = new Date(timestamp < 946684800000 ? timestamp * 1000 : timestamp)
       }
     }
-  } else if (typeof created_at === 'number') {
+  } else if (typeof createdAt === 'number') {
     // Handle numeric timestamp
-    date = new Date(created_at < 946684800000 ? created_at * 1000 : created_at)
+    date = new Date(createdAt < 946684800000 ? createdAt * 1000 : createdAt)
   } else {
     // Fallback to current time if parsing fails
     date = new Date()
@@ -138,10 +138,10 @@ const renderedSummary = computed(() => {
     </div>
 
     <div v-if="insight.actions && insight.actions.length > 0" class="card-actions">
-      <button v-for="action in insight.actions" :key="action.action_id" class="action-btn" :class="{
-        'primary': action.action_id === 'promote' || action.action_id === 'apply' || action.action_id === 'investigate',
-        'secondary': action.action_id === 'dismiss'
-      }" @click="$emit('action', action.action_id)">
+      <button v-for="action in insight.actions" :key="action.actionId" class="action-btn" :class="{
+        'primary': action.actionId === 'promote' || action.actionId === 'apply' || action.actionId === 'investigate' || action.actionId === 'navigate',
+        'secondary': action.actionId === 'dismiss'
+      }" @click="$emit('action', action.actionId)">
         {{ action.label }}
       </button>
       <button class="action-btn ask-ai" @click="$emit('askAI')">

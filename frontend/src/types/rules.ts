@@ -1,10 +1,22 @@
-// Rule Types - Phase 4
-
 export type RuleState = 'draft' | 'testing' | 'production' | 'archived'
-
-export type RuleAction = 'block' | 'monitor' | 'allow'
-
+export type RuleAction = 'block' | 'alert' | 'allow'
 export type RuleSeverity = 'critical' | 'high' | 'warning' | 'info'
+export type RuleType = 'exec' | 'file' | 'connect'
+export type MatchType = 'exact' | 'contains' | 'prefix'
+
+export interface RuleMatch {
+  processName?: string
+  processNameType?: MatchType
+  parentName?: string
+  parentNameType?: MatchType
+  pid?: number
+  ppid?: number
+  filename?: string
+  destPort?: number
+  destIp?: string
+  cgroupId?: string
+  uid?: number
+}
 
 export interface Rule {
   name: string
@@ -12,31 +24,26 @@ export interface Rule {
   state: RuleState
   action: RuleAction
   severity: RuleSeverity
-  match: {
-    process?: string
-    filename?: string
-    dest_port?: number
-    cgroup?: string
-    uid?: number
-    uid_not?: number
-    [key: string]: any
-  }
+  type: RuleType
+  match: RuleMatch
   yaml: string
+  createdAt?: string
+  deployedAt?: string
+  promotedAt?: string
 }
 
-export interface RuleStats {
+export interface RuleValidationStats {
   hits: number
-  blocks: number
-  falsePositives?: number
-  observationMinutes?: number
-  // Legacy field for backward compatibility
-  observationHours?: number
+  observationMinutes: number
 }
 
-// Legacy alias maintained for backward compatibility
-// Preferred explicit type for testing rules
+export interface RuleValidation {
+  isReady: boolean
+  score?: number
+}
+
 export interface TestingRule extends Rule {
   state: 'testing'
-  stats: RuleStats
+  stats: RuleValidationStats
+  validation: RuleValidation
 }
-

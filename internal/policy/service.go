@@ -373,19 +373,7 @@ func (s *Service) evaluateFile(engine *rules.Engine, record *telemetry.Record) D
 
 	matched, rule, allowed := engine.MatchFile(raw.Ino, raw.Dev, event.Filename, raw.Hdr.PID, raw.Hdr.CgroupID)
 	if event.Blocked && (!matched || rule == nil) {
-		alert := system.Alert{
-			ID:          alertID("file", event.PID),
-			Timestamp:   event.Timestamp.UnixMilli(),
-			Severity:    "critical",
-			RuleName:    "Kernel Blocked File Access",
-			Description: fmt.Sprintf("File access blocked by kernel: %s", event.Filename),
-			PID:         event.PID,
-			ProcessName: event.ProcessName,
-			CgroupID:    strconv.FormatUint(event.CgroupID, 10),
-			Action:      "block",
-			Blocked:     true,
-		}
-		return Decision{Type: DecisionBlock, Alerts: []system.Alert{alert}}
+		return blockedKernelDecision("file", "Kernel Blocked File Access", fmt.Sprintf("File access blocked by kernel: %s", event.Filename), event)
 	}
 	if !matched || rule == nil {
 		return Decision{Type: DecisionNoMatch}
@@ -394,39 +382,10 @@ func (s *Service) evaluateFile(engine *rules.Engine, record *telemetry.Record) D
 		return Decision{Type: DecisionAllow, Rule: rule}
 	}
 	if rule.IsTesting() {
-		if testingBuffer := engine.GetTestingBuffer(); testingBuffer != nil {
-			testingBuffer.RecordHit(&rules.TestingHit{
-				RuleName:    rule.Name,
-				HitTime:     raw.Hdr.Timestamp(),
-				EventType:   events.EventTypeFileOpen,
-				EventData:   &raw,
-				PID:         raw.Hdr.PID,
-				ProcessName: event.ProcessName,
-			})
-		}
+		recordTestingHit(engine, rule.Name, raw.Hdr.Timestamp(), events.EventTypeFileOpen, &raw, raw.Hdr.PID, event.ProcessName)
 		return Decision{Type: DecisionTestingHit, Rule: rule}
 	}
-	severity := rule.Severity
-	if event.Blocked && severity != "critical" {
-		severity = "critical"
-	}
-	alert := system.Alert{
-		ID:          alertID("file", event.PID),
-		Timestamp:   event.Timestamp.UnixMilli(),
-		Severity:    severity,
-		RuleName:    rule.Name,
-		Description: fmt.Sprintf("%s: %s", rule.Description, event.Filename),
-		PID:         event.PID,
-		ProcessName: event.ProcessName,
-		CgroupID:    strconv.FormatUint(event.CgroupID, 10),
-		Action:      string(rule.Action),
-		Blocked:     event.Blocked,
-	}
-	alertType := DecisionAlert
-	if rule.Action == rules.ActionBlock || event.Blocked {
-		alertType = DecisionBlock
-	}
-	return Decision{Type: alertType, Rule: rule, Alerts: []system.Alert{alert}}
+	return ruleAlertDecision("file", fmt.Sprintf("%s: %s", rule.Description, event.Filename), event, rule)
 }
 
 func (s *Service) evaluateConnect(engine *rules.Engine, record *telemetry.Record) Decision {
@@ -438,19 +397,7 @@ func (s *Service) evaluateConnect(engine *rules.Engine, record *telemetry.Record
 
 	matched, rule, allowed := engine.MatchConnect(&raw)
 	if event.Blocked && (!matched || rule == nil) {
-		alert := system.Alert{
-			ID:          alertID("net", event.PID),
-			Timestamp:   event.Timestamp.UnixMilli(),
-			Severity:    "critical",
-			RuleName:    "Kernel Blocked Connection",
-			Description: fmt.Sprintf("Network connection blocked by kernel: %s", event.Address),
-			PID:         event.PID,
-			ProcessName: event.ProcessName,
-			CgroupID:    strconv.FormatUint(event.CgroupID, 10),
-			Action:      "block",
-			Blocked:     true,
-		}
-		return Decision{Type: DecisionBlock, Alerts: []system.Alert{alert}}
+		return blockedKernelDecision("net", "Kernel Blocked Connection", fmt.Sprintf("Network connection blocked by kernel: %s", event.Address), event)
 	}
 	if !matched || rule == nil {
 		return Decision{Type: DecisionNoMatch}
@@ -459,39 +406,10 @@ func (s *Service) evaluateConnect(engine *rules.Engine, record *telemetry.Record
 		return Decision{Type: DecisionAllow, Rule: rule}
 	}
 	if rule.IsTesting() {
-		if testingBuffer := engine.GetTestingBuffer(); testingBuffer != nil {
-			testingBuffer.RecordHit(&rules.TestingHit{
-				RuleName:    rule.Name,
-				HitTime:     raw.Hdr.Timestamp(),
-				EventType:   events.EventTypeConnect,
-				EventData:   &raw,
-				PID:         raw.Hdr.PID,
-				ProcessName: event.ProcessName,
-			})
-		}
+		recordTestingHit(engine, rule.Name, raw.Hdr.Timestamp(), events.EventTypeConnect, &raw, raw.Hdr.PID, event.ProcessName)
 		return Decision{Type: DecisionTestingHit, Rule: rule}
 	}
-	severity := rule.Severity
-	if event.Blocked && severity != "critical" {
-		severity = "critical"
-	}
-	alert := system.Alert{
-		ID:          alertID("net", event.PID),
-		Timestamp:   event.Timestamp.UnixMilli(),
-		Severity:    severity,
-		RuleName:    rule.Name,
-		Description: rule.Description,
-		PID:         event.PID,
-		ProcessName: event.ProcessName,
-		CgroupID:    strconv.FormatUint(event.CgroupID, 10),
-		Action:      string(rule.Action),
-		Blocked:     event.Blocked,
-	}
-	alertType := DecisionAlert
-	if rule.Action == rules.ActionBlock || event.Blocked {
-		alertType = DecisionBlock
-	}
-	return Decision{Type: alertType, Rule: rule, Alerts: []system.Alert{alert}}
+	return ruleAlertDecision("net", rule.Description, event, rule)
 }
 
 func alertID(prefix string, pid uint32) string {
@@ -503,14 +421,7 @@ func eventFromRawExec(record *telemetry.Record) (events.ExecEvent, bool) {
 	if !ok {
 		return events.ExecEvent{}, false
 	}
-	switch raw := raw.Data.(type) {
-	case events.ExecEvent:
-		return raw, true
-	case *events.ExecEvent:
-		return *raw, true
-	default:
-		return events.ExecEvent{}, false
-	}
+	return storage.ExecPayload(raw)
 }
 
 func eventFromRawFile(record *telemetry.Record) (events.FileOpenEvent, bool) {
@@ -518,14 +429,7 @@ func eventFromRawFile(record *telemetry.Record) (events.FileOpenEvent, bool) {
 	if !ok {
 		return events.FileOpenEvent{}, false
 	}
-	switch raw := raw.Data.(type) {
-	case events.FileOpenEvent:
-		return raw, true
-	case *events.FileOpenEvent:
-		return *raw, true
-	default:
-		return events.FileOpenEvent{}, false
-	}
+	return storage.FileOpenPayload(raw)
 }
 
 func eventFromRawConnect(record *telemetry.Record) (events.ConnectEvent, bool) {
@@ -533,14 +437,7 @@ func eventFromRawConnect(record *telemetry.Record) (events.ConnectEvent, bool) {
 	if !ok {
 		return events.ConnectEvent{}, false
 	}
-	switch raw := raw.Data.(type) {
-	case events.ConnectEvent:
-		return raw, true
-	case *events.ConnectEvent:
-		return *raw, true
-	default:
-		return events.ConnectEvent{}, false
-	}
+	return storage.ConnectPayload(raw)
 }
 
 func rawEvent(record *telemetry.Record) (*storage.Event, bool) {
@@ -548,4 +445,59 @@ func rawEvent(record *telemetry.Record) (*storage.Event, bool) {
 		return nil, false
 	}
 	return record.Raw, true
+}
+
+func blockedKernelDecision(prefix, ruleName, description string, event *telemetry.Event) Decision {
+	alert := system.Alert{
+		ID:          alertID(prefix, event.PID),
+		Timestamp:   event.Timestamp.UnixMilli(),
+		Severity:    "critical",
+		RuleName:    ruleName,
+		Description: description,
+		PID:         event.PID,
+		ProcessName: event.ProcessName,
+		ParentName:  event.ParentName,
+		CgroupID:    strconv.FormatUint(event.CgroupID, 10),
+		Action:      "block",
+		Blocked:     true,
+	}
+	return Decision{Type: DecisionBlock, Alerts: []system.Alert{alert}}
+}
+
+func recordTestingHit(engine *rules.Engine, ruleName string, hitTime time.Time, eventType events.EventType, eventData any, pid uint32, processName string) {
+	if testingBuffer := engine.GetTestingBuffer(); testingBuffer != nil {
+		testingBuffer.RecordHit(&rules.TestingHit{
+			RuleName:    ruleName,
+			HitTime:     hitTime,
+			EventType:   eventType,
+			EventData:   eventData,
+			PID:         pid,
+			ProcessName: processName,
+		})
+	}
+}
+
+func ruleAlertDecision(prefix, description string, event *telemetry.Event, rule *Rule) Decision {
+	severity := rule.Severity
+	if event.Blocked && severity != "critical" {
+		severity = "critical"
+	}
+	alert := system.Alert{
+		ID:          alertID(prefix, event.PID),
+		Timestamp:   event.Timestamp.UnixMilli(),
+		Severity:    severity,
+		RuleName:    rule.Name,
+		Description: description,
+		PID:         event.PID,
+		ProcessName: event.ProcessName,
+		ParentName:  event.ParentName,
+		CgroupID:    strconv.FormatUint(event.CgroupID, 10),
+		Action:      string(rule.Action),
+		Blocked:     event.Blocked,
+	}
+	decisionType := DecisionAlert
+	if rule.Action == rules.ActionBlock || event.Blocked {
+		decisionType = DecisionBlock
+	}
+	return Decision{Type: decisionType, Rule: rule, Alerts: []system.Alert{alert}}
 }

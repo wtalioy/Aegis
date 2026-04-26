@@ -72,28 +72,28 @@ const formatTime = (timestamp: number) => {
             <component :is="eventIcon(event.type)" :size="16" class="icon" />
             <span class="badge" :data-type="event.type">{{ event.type }}</span>
           </div>
-          <div class="td process" :title="event.header?.comm">{{ event.header?.comm || 'Unknown' }}</div>
+          <div class="td process" :title="event.processName">{{ event.processName || 'Unknown' }}</div>
           <div class="td details">
             <span v-if="event.type === 'exec'" class="details-text"
-              :title="(event as any).commandLine || (event as any).filename || (event as any).header?.comm">
-              {{ (event as any).commandLine || (event as any).filename || (event as any).header?.comm || '—' }}
+              :title="event.commandLine || event.filename || event.processName">
+              {{ event.commandLine || event.filename || event.processName || '—' }}
             </span>
-            <span v-else-if="event.type === 'file'" class="details-text" :title="(event as any).filename">
-              {{ (event as any).filename || '—' }}
+            <span v-else-if="event.type === 'file'" class="details-text" :title="event.filename">
+              {{ event.filename || '—' }}
             </span>
             <span v-else-if="event.type === 'connect'" class="details-text">
-              <template v-if="(event as any).addr && (event as any).port">
-                {{ (event as any).addr }}:{{ (event as any).port }}
+              <template v-if="event.addr && event.port">
+                {{ event.addr }}:{{ event.port }}
               </template>
-              <template v-else-if="(event as any).addr">
-                {{ (event as any).addr }}
+              <template v-else-if="event.addr">
+                {{ event.addr }}
               </template>
               <template v-else>—</template>
             </span>
             <span v-else class="details-text">—</span>
           </div>
-          <div class="td pid">{{ event.header?.pid ?? '—' }}</div>
-          <div class="td time">{{ event.header?.timestamp ? formatTime(event.header.timestamp) : 'Unknown' }}</div>
+          <div class="td pid">{{ event.pid ?? '—' }}</div>
+          <div class="td time">{{ event.timestamp ? formatTime(event.timestamp) : 'Unknown' }}</div>
         </div>
       </div>
 

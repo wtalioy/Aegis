@@ -88,7 +88,7 @@ func Analyze(
 		return nil, fmt.Errorf("AI inference failed: %w", err)
 	}
 
-	recommendations := generateRecommendations(req.Type, anomalies, analysisData)
+	recommendations := generateRecommendations(req.Type, req.ID, anomalies)
 
 	baselineStatus := "normal"
 	for _, a := range anomalies {
@@ -189,7 +189,7 @@ func analyzeRuleAnomalies(rule *policy.Rule, engine *policy.Engine) []types.Anom
 	return out
 }
 
-func generateRecommendations(analysisType string, anomalies []types.Anomaly, data string) []types.Recommendation {
+func generateRecommendations(analysisType, resourceID string, anomalies []types.Anomaly) []types.Recommendation {
 	if len(anomalies) == 0 {
 		return nil
 	}
@@ -205,7 +205,7 @@ func generateRecommendations(analysisType string, anomalies []types.Anomaly, dat
 			Action: types.Action{
 				Label:    "Investigate in UI",
 				ActionID: "investigate",
-				Params:   map[string]any{"context_type": analysisType},
+				Params:   types.ActionParams{ContextType: analysisType},
 			},
 		})
 	case "rule":
@@ -216,7 +216,7 @@ func generateRecommendations(analysisType string, anomalies []types.Anomaly, dat
 			Action: types.Action{
 				Label:    "Review rule",
 				ActionID: "review_rule",
-				Params:   map[string]any{"rule_name": data},
+				Params:   types.ActionParams{RuleName: resourceID},
 			},
 		})
 	}

@@ -3,22 +3,24 @@
 import { ref, watch, computed } from 'vue'
 import { MessageSquare, Loader2 } from 'lucide-vue-next'
 import { useAI } from '../../composables/useAI'
+import type { ExplainResponse } from '../../types/ai'
+import type { SecurityEvent } from '../../types/events'
 import AIExplanation from '../ai/AIExplanation.vue'
 
-const props = defineProps<{ event?: any; processId?: number }>()
+const props = defineProps<{ event?: SecurityEvent | null; processId?: number }>()
 
 const { explainEvent, loading } = useAI()
-const explanation = ref<any>(null)
+const explanation = ref<ExplainResponse | null>(null)
 const expError = ref<string | null>(null)
 const expSeq = ref(0)
 
 // Compute details text based on event type (matching EventList logic)
 const eventDetails = computed(() => {
   if (!props.event) return '—'
-  const event = props.event as any
+  const event = props.event
   
   if (event.type === 'exec') {
-    return event.commandLine || event.filename || event.header?.comm || '—'
+    return event.commandLine || event.filename || event.processName || '—'
   } else if (event.type === 'file') {
     return event.filename || '—'
   } else if (event.type === 'connect') {
@@ -46,14 +48,13 @@ const askDetail = async () => {
   try {
     const res = await explainEvent({
       eventId: props.event.id,
-      eventData: props.event,
       question: 'Explain this event in detail: what happened, why it was flagged, and key evidence. Use structured markdown with headings and bullet points.'
     })
     if (my !== expSeq.value) return
     explanation.value = res
-  } catch (e: any) {
+  } catch (e) {
     if (my !== expSeq.value) return
-    expError.value = e?.message || 'Failed to get AI explanation'
+    expError.value = e instanceof Error ? e.message : 'Failed to get AI explanation'
   }
 }
 
@@ -65,14 +66,13 @@ const askAction = async () => {
   try {
     const res = await explainEvent({
       eventId: props.event.id,
-      eventData: props.event,
       question: 'What should I do? Provide concrete, prioritized containment and remediation steps, plus follow-up investigation tasks. Return a concise, ordered markdown list.'
     })
     if (my !== expSeq.value) return
     explanation.value = res
-  } catch (e: any) {
+  } catch (e) {
     if (my !== expSeq.value) return
-    expError.value = e?.message || 'Failed to get AI recommendation'
+    expError.value = e instanceof Error ? e.message : 'Failed to get AI recommendation'
   }
 }
 </script>
@@ -105,10 +105,10 @@ const askAction = async () => {
         <!-- Always-visible compact event detail -->
         <div class="event-mini">
           <div class="row"><span class="label">Type</span><span class="value type">{{ event.type?.toUpperCase?.() || event.type }}</span></div>
-          <div class="row"><span class="label">Process</span><span class="value process">{{ event.header?.comm || 'Unknown' }}</span></div>
+          <div class="row"><span class="label">Process</span><span class="value process">{{ event.processName || 'Unknown' }}</span></div>
           <div class="row"><span class="label">Details</span><span class="value details">{{ eventDetails }}</span></div>
-          <div class="row"><span class="label">PID</span><span class="value mono">{{ event.header?.pid ?? '—' }}</span></div>
-          <div class="row"><span class="label">Time</span><span class="value mono">{{ event.header?.timestamp ? new Date(event.header.timestamp).toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}) : 'Unknown' }}</span></div>
+          <div class="row"><span class="label">PID</span><span class="value mono">{{ event.pid ?? '—' }}</span></div>
+          <div class="row"><span class="label">Time</span><span class="value mono">{{ event.timestamp ? new Date(event.timestamp).toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}) : 'Unknown' }}</span></div>
         </div>
 
         <!-- Actions -->

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { Component } from 'vue'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
@@ -13,7 +14,7 @@ import {
 } from 'lucide-vue-next'
 
 interface NavItem {
-  icon: any
+  icon: Component
   label: string
   route: string
   section: 'core' | 'system'

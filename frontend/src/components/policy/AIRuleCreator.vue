@@ -3,11 +3,12 @@
 import { ref } from 'vue'
 import { Sparkles, Loader2 } from 'lucide-vue-next'
 import { useAI } from '../../composables/useAI'
+import type { RuleGenResponse } from '../../types/ai'
 
 const { generateRule, loading } = useAI()
 
 const emit = defineEmits<{
-  'rule-generated': [rule: any]
+  'rule-generated': [rule: RuleGenResponse]
 }>()
 
 const description = ref('')

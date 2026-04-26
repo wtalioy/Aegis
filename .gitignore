@@ -9,3 +9,8 @@ bpf/vmlinux.h
 # Frontend
 node_modules/
 dist/
+
+# IDE and OS files
+.DS_Store
+.cursor/
+.codex

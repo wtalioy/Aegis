@@ -11,6 +11,7 @@ import (
 	"aegis/internal/platform/ai/providers"
 	"aegis/internal/platform/storage"
 	"aegis/internal/policy"
+	"aegis/internal/policy/rules"
 	"gopkg.in/yaml.v3"
 )
 
@@ -41,7 +42,7 @@ func GenerateRule(ctx context.Context, p providers.Provider, req *types.RuleGenR
 		return nil, fmt.Errorf("failed to parse generated rule YAML: %w", err)
 	}
 
-	cleanRule := policy.CleanRuleForYAML(rule)
+	cleanRule := rules.CleanRuleForYAML(rule)
 	yamlBytes, err := yaml.Marshal(cleanRule)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal rule to YAML: %w", err)

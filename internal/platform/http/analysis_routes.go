@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -12,8 +11,7 @@ import (
 func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 	registerAliases(mux, []string{"/api/v1/analysis/status"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if deps.Analysis == nil {
@@ -25,15 +23,14 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 
 	registerAliases(mux, []string{"/api/v1/analysis/diagnose"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if deps.Analysis == nil {
 			writeErrorString(w, http.StatusServiceUnavailable, "AI service not available")
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		ctx, cancel := withTimeout(r, 90*time.Second)
 		defer cancel()
 		result, err := deps.Analysis.Diagnose(ctx)
 		if err != nil {
@@ -45,13 +42,7 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 
 	registerAliases(mux, []string{"/api/v1/analysis/chat"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method == http.MethodOptions {
-			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			return
-		}
-		if r.Method != http.MethodPost {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodPost, http.MethodPost) {
 			return
 		}
 		if deps.Analysis == nil {
@@ -62,14 +53,14 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 			Message   string `json:"message"`
 			SessionID string `json:"sessionId"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 		if req.SessionID == "" {
 			req.SessionID = generateSessionID()
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		ctx, cancel := withTimeout(r, 90*time.Second)
 		defer cancel()
 		result, err := deps.Analysis.Chat(ctx, req.SessionID, req.Message)
 		if err != nil {
@@ -81,13 +72,7 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 
 	registerAliases(mux, []string{"/api/v1/analysis/chat/stream"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method == http.MethodOptions {
-			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			return
-		}
-		if r.Method != http.MethodPost {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodPost, http.MethodPost) {
 			return
 		}
 		if deps.Analysis == nil {
@@ -98,7 +83,7 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 			Message   string `json:"message"`
 			SessionID string `json:"sessionId"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
@@ -106,7 +91,7 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 			req.SessionID = generateSessionID()
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+		ctx, cancel := withTimeout(r, 120*time.Second)
 		defer cancel()
 		tokenChan, err := deps.Analysis.ChatStream(ctx, req.SessionID, req.Message)
 		if err != nil {
@@ -134,8 +119,7 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 
 	registerAliases(mux, []string{"/api/v1/analysis/chat/history"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if deps.Analysis == nil {
@@ -148,24 +132,22 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 
 	registerAliases(mux, []string{"/api/v1/analysis/chat/clear"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method != http.MethodPost {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		if deps.Analysis != nil {
 			var req struct {
 				SessionID string `json:"sessionId"`
 			}
-			_ = json.NewDecoder(r.Body).Decode(&req)
+			_ = decodeJSON(r, &req)
 			deps.Analysis.ClearChat(req.SessionID)
 		}
-		writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+		writeJSON(w, http.StatusOK, successResponse{Success: true})
 	})
 
 	registerAliases(mux, []string{"/api/v1/analysis/generate-rule"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method != http.MethodPost {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		if deps.Analysis == nil {
@@ -173,11 +155,11 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 			return
 		}
 		var req types.RuleGenRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		ctx, cancel := withTimeout(r, 90*time.Second)
 		defer cancel()
 		result, err := deps.Analysis.GenerateRule(ctx, &req)
 		if err != nil {
@@ -189,27 +171,25 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 
 	registerAliases(mux, []string{"/api/v1/analysis/explain"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method != http.MethodPost {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		if deps.Analysis == nil {
 			writeErrorString(w, http.StatusServiceUnavailable, "AI service not available")
 			return
 		}
-		var raw map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		var req types.ExplainRequest
+		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		req, err := decodeExplainRequest(raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
+		if req.EventID == "" {
+			writeErrorString(w, http.StatusBadRequest, "eventId is required")
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		ctx, cancel := withTimeout(r, 90*time.Second)
 		defer cancel()
-		result, err := deps.Analysis.ExplainEvent(ctx, req, req.EventID)
+		result, err := deps.Analysis.ExplainEvent(ctx, &req, req.EventID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -217,10 +197,9 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 		writeJSON(w, http.StatusOK, result)
 	})
 
-	registerAliases(mux, []string{"/api/v1/analysis/context", "/api/v1/analysis/analyze"}, func(w http.ResponseWriter, r *http.Request) {
+	registerAliases(mux, []string{"/api/v1/analysis/analyze"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method != http.MethodPost {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		if deps.Analysis == nil {
@@ -228,11 +207,11 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 			return
 		}
 		var req types.AnalyzeRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		ctx, cancel := withTimeout(r, 90*time.Second)
 		defer cancel()
 		result, err := deps.Analysis.Analyze(ctx, &req)
 		if err != nil {
@@ -241,17 +220,4 @@ func registerAnalysisRoutes(mux *http.ServeMux, deps Dependencies) {
 		}
 		writeJSON(w, http.StatusOK, result)
 	})
-}
-
-func decodeExplainRequest(raw map[string]any) (*types.ExplainRequest, error) {
-	req := &types.ExplainRequest{}
-	if value, ok := raw["event_id"].(string); ok {
-		req.EventID = value
-	} else if value, ok := raw["eventId"].(string); ok {
-		req.EventID = value
-	}
-	if value, ok := raw["question"].(string); ok {
-		req.Question = value
-	}
-	return req, nil
 }

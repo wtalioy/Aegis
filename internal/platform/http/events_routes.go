@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,14 +9,60 @@ import (
 	"aegis/internal/telemetry"
 )
 
+type eventQueryRequest struct {
+	Filter eventQueryFilter `json:"filter"`
+	Page   int              `json:"page"`
+	Limit  int              `json:"limit"`
+}
+
+type eventQueryFilter struct {
+	Types     []string `json:"types"`
+	Processes []string `json:"processes"`
+	PIDs      []uint32 `json:"pids"`
+	CgroupIDs []uint64 `json:"cgroupIds"`
+	TimeWindow struct {
+		Start string `json:"start"`
+		End   string `json:"end"`
+	} `json:"timeWindow"`
+}
+
+type eventDTO struct {
+	ID          string              `json:"id"`
+	Type        telemetry.EventType `json:"type"`
+	Timestamp   int64               `json:"timestamp"`
+	PID         uint32              `json:"pid"`
+	PPID        uint32              `json:"ppid,omitempty"`
+	CgroupID    string              `json:"cgroupId"`
+	ProcessName string              `json:"processName"`
+	ParentComm  string              `json:"parentComm,omitempty"`
+	CommandLine string              `json:"commandLine,omitempty"`
+	Filename    string              `json:"filename,omitempty"`
+	Flags       uint32              `json:"flags,omitempty"`
+	Ino         uint64              `json:"ino,omitempty"`
+	Dev         uint64              `json:"dev,omitempty"`
+	Family      uint16              `json:"family,omitempty"`
+	Port        uint16              `json:"port,omitempty"`
+	Addr        string              `json:"addr,omitempty"`
+	Blocked     bool                `json:"blocked"`
+}
+
+type eventPageResponse struct {
+	Events     []eventDTO           `json:"events"`
+	Total      int                  `json:"total"`
+	Page       int                  `json:"page"`
+	Limit      int                  `json:"limit"`
+	TotalPages int                  `json:"totalPages"`
+	TypeCounts telemetry.TypeCounts `json:"typeCounts"`
+}
+
 func registerEventRoutes(mux *http.ServeMux, deps Dependencies) {
 	eventStreamHandler := func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
-		streamSSE(w, r, deps.EventStream.Subscribe(100), func(event telemetry.Event) any {
+		subscription := deps.EventStream.Subscribe(100)
+		streamMappedSSE(w, r, subscription.C, subscription.Cancel, func(event telemetry.Event) eventDTO {
 			return eventToDTO(event)
 		})
 	}
@@ -30,114 +75,31 @@ func registerEventRoutes(mux *http.ServeMux, deps Dependencies) {
 			eventStreamHandler(w, r)
 			return
 		}
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
-
-		limit := 50
-		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-			if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
-				limit = parsed
-			}
-		}
-
-		filter := telemetry.Filter{}
-		if eventType := strings.TrimSpace(r.URL.Query().Get("type")); eventType != "" {
-			if parsed := parseEventType(eventType); parsed != "" {
-				filter.Types = []telemetry.EventType{parsed}
-			}
-		}
-		if process := strings.TrimSpace(r.URL.Query().Get("process")); process != "" {
-			filter.Processes = []string{process}
-		}
-
-		result := deps.Telemetry.Query(telemetry.Query{
-			Filter: filter,
-			Page:   1,
-			Limit:  limit,
-		})
-		writeJSON(w, http.StatusOK, map[string]any{
-			"events":      mapEvents(result.Events),
-			"total":       result.Total,
-			"page":        result.Page,
-			"limit":       result.Limit,
-			"totalPages":  result.TotalPages,
-			"type_counts": result.TypeCounts,
-		})
+		result := deps.Telemetry.Query(queryFromListRequest(readEventListRequest(r)))
+		writeJSON(w, http.StatusOK, toEventPageResponse(result))
 	})
 
 	registerAliases(mux, []string{"/api/v1/events/query"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method == http.MethodOptions {
-			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			return
-		}
-		if r.Method != http.MethodPost {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 
-		var req struct {
-			Filter struct {
-				Types      []string `json:"types"`
-				Processes  []string `json:"processes"`
-				PIDs       []uint32 `json:"pids"`
-				CgroupIDs  []uint64 `json:"cgroup_ids"`
-				TimeWindow struct {
-					Start string `json:"start"`
-					End   string `json:"end"`
-				} `json:"time_window"`
-			} `json:"filter"`
-			Page  int `json:"page"`
-			Limit int `json:"limit"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var req eventQueryRequest
+		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-
-		filter := telemetry.Filter{
-			Processes: req.Filter.Processes,
-			PIDs:      req.Filter.PIDs,
-			CgroupIDs: req.Filter.CgroupIDs,
-		}
-		for _, rawType := range req.Filter.Types {
-			if eventType := parseEventType(rawType); eventType != "" {
-				filter.Types = append(filter.Types, eventType)
-			}
-		}
-		if req.Filter.TimeWindow.Start != "" {
-			if ts, err := time.Parse(time.RFC3339, req.Filter.TimeWindow.Start); err == nil {
-				filter.Start = &ts
-			}
-		}
-		if req.Filter.TimeWindow.End != "" {
-			if ts, err := time.Parse(time.RFC3339, req.Filter.TimeWindow.End); err == nil {
-				filter.End = &ts
-			}
-		}
-
-		result := deps.Telemetry.Query(telemetry.Query{
-			Filter: filter,
-			Page:   req.Page,
-			Limit:  req.Limit,
-		})
-		writeJSON(w, http.StatusOK, map[string]any{
-			"events":      mapEvents(result.Events),
-			"total":       result.Total,
-			"page":        result.Page,
-			"limit":       result.Limit,
-			"totalPages":  result.TotalPages,
-			"type_counts": result.TypeCounts,
-		})
+		result := deps.Telemetry.Query(queryFromRequest(req))
+		writeJSON(w, http.StatusOK, toEventPageResponse(result))
 	})
 
 	registerAliasesWithPrefix(mux, []string{"/api/v1/events/"}, func(w http.ResponseWriter, r *http.Request, id string) {
 		setCORS(w)
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if id == "" || id == "stream" || id == "query" {
@@ -153,42 +115,107 @@ func registerEventRoutes(mux *http.ServeMux, deps Dependencies) {
 	})
 }
 
-func mapEvents(events []telemetry.Event) []map[string]any {
-	out := make([]map[string]any, 0, len(events))
+func readEventListRequest(r *http.Request) eventQueryRequest {
+	req := eventQueryRequest{
+		Page:  1,
+		Limit: 50,
+	}
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			req.Limit = parsed
+		}
+	}
+	if eventType := strings.TrimSpace(r.URL.Query().Get("type")); eventType != "" {
+		req.Filter.Types = []string{eventType}
+	}
+	if process := strings.TrimSpace(r.URL.Query().Get("process")); process != "" {
+		req.Filter.Processes = []string{process}
+	}
+	return req
+}
+
+func mapEvents(events []telemetry.Event) []eventDTO {
+	out := make([]eventDTO, 0, len(events))
 	for _, event := range events {
 		out = append(out, eventToDTO(event))
 	}
 	return out
 }
 
-func eventToDTO(event telemetry.Event) map[string]any {
-	dto := map[string]any{
-		"id":          event.ID,
-		"type":        string(event.Type),
-		"timestamp":   event.Timestamp.UnixMilli(),
-		"pid":         event.PID,
-		"cgroupId":    strconv.FormatUint(event.CgroupID, 10),
-		"blocked":     event.Blocked,
-		"processName": event.ProcessName,
+func eventToDTO(event telemetry.Event) eventDTO {
+	dto := eventDTO{
+		ID:          event.ID,
+		Type:        event.Type,
+		Timestamp:   event.Timestamp.UnixMilli(),
+		PID:         event.PID,
+		CgroupID:    strconv.FormatUint(event.CgroupID, 10),
+		ProcessName: event.ProcessName,
+		Blocked:     event.Blocked,
 	}
-
 	switch event.Type {
 	case telemetry.EventTypeExec:
-		dto["comm"] = event.ProcessName
-		dto["ppid"] = event.PPID
-		dto["parentComm"] = event.ParentName
-		dto["commandLine"] = event.CommandLine
+		dto.PPID = event.PPID
+		dto.ParentComm = event.ParentName
+		dto.CommandLine = event.CommandLine
+		dto.Filename = event.Filename
 	case telemetry.EventTypeFile:
-		dto["filename"] = event.Filename
-		dto["flags"] = event.Flags
-		dto["ino"] = event.Ino
-		dto["dev"] = event.Dev
+		dto.Filename = event.Filename
+		dto.Flags = event.Flags
+		dto.Ino = event.Ino
+		dto.Dev = event.Dev
 	case telemetry.EventTypeConnect:
-		dto["family"] = event.Family
-		dto["port"] = event.Port
-		dto["addr"] = event.Address
+		dto.Family = event.Family
+		dto.Port = event.Port
+		dto.Addr = event.Address
 	}
 	return dto
+}
+
+func toEventPageResponse(result telemetry.PageResult) eventPageResponse {
+	return eventPageResponse{
+		Events:     mapEvents(result.Events),
+		Total:      result.Total,
+		Page:       result.Page,
+		Limit:      result.Limit,
+		TotalPages: result.TotalPages,
+		TypeCounts: result.TypeCounts,
+	}
+}
+
+func queryFromListRequest(req eventQueryRequest) telemetry.Query {
+	return queryFromRequest(req)
+}
+
+func queryFromRequest(req eventQueryRequest) telemetry.Query {
+	filter := telemetry.Filter{
+		Processes: req.Filter.Processes,
+		PIDs:      req.Filter.PIDs,
+		CgroupIDs: req.Filter.CgroupIDs,
+	}
+	for _, rawType := range req.Filter.Types {
+		if eventType := parseEventType(rawType); eventType != "" {
+			filter.Types = append(filter.Types, eventType)
+		}
+	}
+	filter.Start = parseRFC3339Time(req.Filter.TimeWindow.Start)
+	filter.End = parseRFC3339Time(req.Filter.TimeWindow.End)
+
+	return telemetry.Query{
+		Filter: filter,
+		Page:   req.Page,
+		Limit:  req.Limit,
+	}
+}
+
+func parseRFC3339Time(raw string) *time.Time {
+	if raw == "" {
+		return nil
+	}
+	ts, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil
+	}
+	return &ts
 }
 
 func parseEventType(raw string) telemetry.EventType {

@@ -1,8 +1,6 @@
 package providers
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -64,13 +62,10 @@ func (g *GeminiProvider) SingleChat(ctx context.Context, userPrompt string) (str
 }
 
 func (g *GeminiProvider) MultiChat(ctx context.Context, messages []types.Message) (string, error) {
-	body, _ := json.Marshal(g.requestBody(messages))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, g.modelURL("generateContent", false), bytes.NewReader(body))
+	req, err := newJSONRequest(ctx, http.MethodPost, g.modelURL("generateContent", false), g.requestBody(messages))
 	if err != nil {
 		return "", err
 	}
-
-	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-goog-api-key", g.apiKey)
 
 	resp, err := g.client.Do(req)
@@ -87,7 +82,7 @@ func (g *GeminiProvider) MultiChat(ctx context.Context, messages []types.Message
 		if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && result.Error.Message != "" {
 			return "", fmt.Errorf("gemini API error: %s", result.Error.Message)
 		}
-		return "", fmt.Errorf("gemini returned status %d", resp.StatusCode)
+		return "", unexpectedStatus("gemini", resp.StatusCode)
 	}
 
 	var result struct {
@@ -121,13 +116,10 @@ func (g *GeminiProvider) CheckHealth(ctx context.Context) error {
 }
 
 func (g *GeminiProvider) MultiChatStream(ctx context.Context, messages []types.Message) (<-chan StreamToken, error) {
-	body, _ := json.Marshal(g.requestBody(messages))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, g.modelURL("streamGenerateContent", true), bytes.NewReader(body))
+	req, err := newJSONRequest(ctx, http.MethodPost, g.modelURL("streamGenerateContent", true), g.requestBody(messages))
 	if err != nil {
 		return nil, err
 	}
-
-	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("x-goog-api-key", g.apiKey)
 
@@ -137,21 +129,7 @@ func (g *GeminiProvider) MultiChatStream(ctx context.Context, messages []types.M
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
-
-		response, fallbackErr := g.MultiChat(ctx, messages)
-		if fallbackErr != nil {
-			return nil, fallbackErr
-		}
-
-		tokenChan := make(chan StreamToken, 2)
-		go func() {
-			defer close(tokenChan)
-			if response != "" {
-				tokenChan <- StreamToken{Content: response}
-			}
-			tokenChan <- StreamToken{Done: true}
-		}()
-		return tokenChan, nil
+		return nil, unexpectedStatus("gemini", resp.StatusCode)
 	}
 
 	tokenChan := make(chan StreamToken, 100)
@@ -160,8 +138,7 @@ func (g *GeminiProvider) MultiChatStream(ctx context.Context, messages []types.M
 		defer close(tokenChan)
 		defer resp.Body.Close()
 
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+		scanner := newStreamScanner(resp)
 
 		var eventData strings.Builder
 

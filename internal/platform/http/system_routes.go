@@ -1,17 +1,24 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"aegis/internal/system"
 )
 
+type systemStatsResponse struct {
+	ProcessCount  int     `json:"processCount"`
+	WorkloadCount int     `json:"workloadCount"`
+	EventsPerSec  float64 `json:"eventsPerSec"`
+	AlertCount    int     `json:"alertCount"`
+	ProbeStatus   string  `json:"probeStatus"`
+	ProbeError    string  `json:"probeError,omitempty"`
+}
+
 func registerSystemRoutes(mux *http.ServeMux, deps Dependencies) {
 	registerAliases(mux, []string{"/api/v1/system/stats"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		processCount := 0
@@ -26,20 +33,19 @@ func registerSystemRoutes(mux *http.ServeMux, deps Dependencies) {
 				probe.Status = system.ProbeStatusStarting
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"processCount":  processCount,
-			"workloadCount": deps.Stats.WorkloadCount(),
-			"eventsPerSec":  float64(execRate + fileRate + connectRate),
-			"alertCount":    int(deps.Stats.TotalAlertCount()),
-			"probeStatus":   probe.Status,
-			"probeError":    probe.Error,
+		writeJSON(w, http.StatusOK, systemStatsResponse{
+			ProcessCount:  processCount,
+			WorkloadCount: deps.Stats.WorkloadCount(),
+			EventsPerSec:  float64(execRate + fileRate + connectRate),
+			AlertCount:    int(deps.Stats.TotalAlertCount()),
+			ProbeStatus:   probe.Status,
+			ProbeError:    probe.Error,
 		})
 	})
 
 	registerAliases(mux, []string{"/api/v1/system/alerts"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		writeJSON(w, http.StatusOK, deps.Stats.Alerts())
@@ -47,13 +53,11 @@ func registerSystemRoutes(mux *http.ServeMux, deps Dependencies) {
 
 	registerAliases(mux, []string{"/api/v1/system/alerts/stream"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
-		streamSSE(w, r, deps.AlertStream.Subscribe(100), func(alert system.Alert) any {
-			return alert
-		})
+		subscription := deps.AlertStream.Subscribe(100)
+		streamSSE(w, r, subscription.C, subscription.Cancel, nil)
 	})
 
 	registerAliases(mux, []string{"/api/v1/system/settings"}, func(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +67,7 @@ func registerSystemRoutes(mux *http.ServeMux, deps Dependencies) {
 			writeJSON(w, http.StatusOK, deps.Settings.Get())
 		case http.MethodPut:
 			var cfg system.Settings
-			if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			if err := decodeJSON(r, &cfg); err != nil {
 				writeError(w, http.StatusBadRequest, err)
 				return
 			}
@@ -74,8 +78,7 @@ func registerSystemRoutes(mux *http.ServeMux, deps Dependencies) {
 			}
 			writeJSON(w, http.StatusOK, result)
 		case http.MethodOptions:
-			w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			allowJSONOptions(w, http.MethodGet, http.MethodPut)
 		default:
 			methodNotAllowed(w)
 		}

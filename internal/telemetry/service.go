@@ -74,8 +74,8 @@ type PageResult struct {
 	Total      int        `json:"total"`
 	Page       int        `json:"page"`
 	Limit      int        `json:"limit"`
-	TotalPages int        `json:"total_pages"`
-	TypeCounts TypeCounts `json:"type_counts"`
+	TotalPages int        `json:"totalPages"`
+	TypeCounts TypeCounts `json:"typeCounts"`
 }
 
 type Service struct {
@@ -369,23 +369,14 @@ func generateEventID(event *storage.Event) string {
 	h.Write([]byte(event.Timestamp.Format(time.RFC3339Nano)))
 	fmt.Fprintf(h, "%d", int(event.Type))
 
-	switch ev := event.Data.(type) {
-	case *events.ExecEvent:
-		h.Write(ev.Hdr.Comm[:])
-		fmt.Fprintf(h, "%d", ev.Hdr.PID)
-	case events.ExecEvent:
-		h.Write(ev.Hdr.Comm[:])
-		fmt.Fprintf(h, "%d", ev.Hdr.PID)
-	case *events.FileOpenEvent:
-		h.Write(ev.Filename[:])
-		fmt.Fprintf(h, "%d", ev.Hdr.PID)
-	case events.FileOpenEvent:
-		h.Write(ev.Filename[:])
-		fmt.Fprintf(h, "%d", ev.Hdr.PID)
-	case *events.ConnectEvent:
-		fmt.Fprintf(h, "%d:%d", ev.Port, ev.Hdr.PID)
-	case events.ConnectEvent:
-		fmt.Fprintf(h, "%d:%d", ev.Port, ev.Hdr.PID)
+	if execEvent, ok := storage.ExecPayload(event); ok {
+		h.Write(execEvent.Hdr.Comm[:])
+		fmt.Fprintf(h, "%d", execEvent.Hdr.PID)
+	} else if fileEvent, ok := storage.FileOpenPayload(event); ok {
+		h.Write(fileEvent.Filename[:])
+		fmt.Fprintf(h, "%d", fileEvent.Hdr.PID)
+	} else if connectEvent, ok := storage.ConnectPayload(event); ok {
+		fmt.Fprintf(h, "%d:%d", connectEvent.Port, connectEvent.Hdr.PID)
 	}
 
 	return hex.EncodeToString(h.Sum(nil))[:16]

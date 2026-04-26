@@ -1,126 +1,37 @@
 <!-- Settings Page - Phase 4 -->
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
-import { getSettings, updateSettings, type Settings, type UpdateSettingsResult } from '../lib/api'
+import { computed } from 'vue'
+import { type ProviderField, useSettingsPage } from '../composables/useSettingsPage'
 import Select from '../components/common/Select.vue'
 import { CheckCircle2, Save, Loader2, RefreshCcw, AlertTriangle } from 'lucide-vue-next'
 
-const settings = ref<Settings | null>(null)
-const loading = ref(true)
-const saving = ref(false)
-const saveStatus = ref<'idle' | 'success' | 'error'>('idle')
-const errorMessage = ref('')
-const updateResult = ref<UpdateSettingsResult | null>(null)
+const {
+  loading,
+  saving,
+  saveStatus,
+  errorMessage,
+  updateResult,
+  form,
+  providerOptions,
+  activeProviderFields,
+  saveSettings,
+  getFieldValue,
+  setFieldValue
+} = useSettingsPage()
 
-// Form state
-const aiProvider = ref<'ollama' | 'openai' | 'gemini' | 'disabled'>('ollama')
-const ollamaEndpoint = ref('')
-const ollamaModel = ref('')
-const ollamaTimeout = ref(60)
-const openaiEndpoint = ref('')
-const openaiApiKey = ref('')
-const openaiModel = ref('')
-const openaiTimeout = ref(30)
-const geminiEndpoint = ref('')
-const geminiApiKey = ref('')
-const geminiModel = ref('')
-const geminiTimeout = ref(30)
-
-const providerOptions = [
-  { value: 'disabled', label: 'Disabled' },
-  { value: 'ollama', label: 'Ollama' },
-  { value: 'openai', label: 'OpenAI-Compatible' },
-  { value: 'gemini', label: 'Gemini' }
-]
-
-const showOpenAIFields = computed(() => aiProvider.value === 'openai')
-const showOllamaFields = computed(() => aiProvider.value === 'ollama')
-const showGeminiFields = computed(() => aiProvider.value === 'gemini')
-
-// Load settings on mount
-onMounted(async () => {
-  try {
-    const data = await getSettings()
-    settings.value = data
-    
-    // Populate form
-    aiProvider.value = data.analysis.mode
-    ollamaEndpoint.value = data.analysis.ollama.endpoint
-    ollamaModel.value = data.analysis.ollama.model
-    ollamaTimeout.value = data.analysis.ollama.timeout
-    openaiEndpoint.value = data.analysis.openai.endpoint
-    openaiApiKey.value = data.analysis.openai.api_key
-    openaiModel.value = data.analysis.openai.model
-    openaiTimeout.value = data.analysis.openai.timeout
-    geminiEndpoint.value = data.analysis.gemini.endpoint
-    geminiApiKey.value = data.analysis.gemini.api_key
-    geminiModel.value = data.analysis.gemini.model
-    geminiTimeout.value = data.analysis.gemini.timeout
-  } catch (err) {
-    console.error('Failed to load settings:', err)
-    errorMessage.value = err instanceof Error ? err.message : 'Failed to load settings'
-  } finally {
-    loading.value = false
+const activeProvider = computed(() => {
+  if (form.mode === 'disabled') {
+    return null
   }
+  return form.mode
 })
 
-// Save settings
-const saveSettings = async () => {
-  if (!settings.value) return
-  
-  saving.value = true
-  saveStatus.value = 'idle'
-  errorMessage.value = ''
-  updateResult.value = null
-  
-  try {
-    const updated: Settings = {
-      ...settings.value,
-      analysis: {
-        mode: aiProvider.value,
-        ollama: {
-          endpoint: ollamaEndpoint.value,
-          model: ollamaModel.value,
-          timeout: ollamaTimeout.value
-        },
-        openai: {
-          endpoint: openaiEndpoint.value,
-          api_key: openaiApiKey.value,
-          model: openaiModel.value,
-          timeout: openaiTimeout.value
-        },
-        gemini: {
-          endpoint: geminiEndpoint.value,
-          api_key: geminiApiKey.value,
-          model: geminiModel.value,
-          timeout: geminiTimeout.value
-        }
-      }
-    }
-    
-    const result = await updateSettings(updated)
-    updateResult.value = result
-    settings.value = result.config
-    saveStatus.value = 'success'
-    
-    // Clear success message after 3 seconds
-    setTimeout(() => {
-      saveStatus.value = 'idle'
-    }, 3000)
-  } catch (err) {
-    console.error('Failed to save settings:', err)
-    errorMessage.value = err instanceof Error ? err.message : 'Failed to save settings'
-    saveStatus.value = 'error'
-  } finally {
-    saving.value = false
+const updateProviderField = (field: ProviderField, value: string) => {
+  if (!activeProvider.value) {
+    return
   }
+  setFieldValue(activeProvider.value, field.key, value)
 }
-
-// Auto-save on provider change (optional - you can remove this if you prefer manual save only)
-watch(aiProvider, () => {
-  // Optionally auto-save when provider changes
-  // saveSettings()
-})
 </script>
 
 <template>
@@ -142,130 +53,24 @@ watch(aiProvider, () => {
         <div class="setting-item">
           <label>AI Provider</label>
           <Select
-            v-model="aiProvider"
+            v-model="form.mode"
             :options="providerOptions"
             placeholder="Select AI provider"
           />
         </div>
 
-        <!-- Ollama Settings -->
-        <div v-if="showOllamaFields" class="provider-settings">
-          <div class="setting-item">
-            <label>Ollama Endpoint</label>
+        <div v-if="activeProvider" class="provider-settings">
+          <div v-for="field in activeProviderFields" :key="field.key" class="setting-item">
+            <label>{{ field.label }}</label>
             <input
-              v-model="ollamaEndpoint"
-              type="text"
-              placeholder="http://localhost:11434"
+              :type="field.type"
+              :min="field.min"
+              :max="field.max"
+              :placeholder="field.placeholder"
+              :value="getFieldValue(activeProvider, field.key)"
+              @input="updateProviderField(field, ($event.target as HTMLInputElement).value)"
             />
-            <p class="setting-hint">URL where Ollama API is running</p>
-          </div>
-          
-          <div class="setting-item">
-            <label>Model</label>
-            <input
-              v-model="ollamaModel"
-              type="text"
-              placeholder="qwen2.5-coder:1.5b"
-            />
-            <p class="setting-hint">Model name to use (e.g., llama3, qwen2.5-coder:1.5b)</p>
-          </div>
-          
-          <div class="setting-item">
-            <label>Timeout (seconds)</label>
-            <input
-              v-model.number="ollamaTimeout"
-              type="number"
-              min="10"
-              max="300"
-            />
-            <p class="setting-hint">Request timeout in seconds</p>
-          </div>
-        </div>
-
-        <!-- OpenAI Settings -->
-        <div v-if="showOpenAIFields" class="provider-settings">
-          <div class="setting-item">
-            <label>Base URL</label>
-            <input
-              v-model="openaiEndpoint"
-              type="text"
-              placeholder="https://api.deepseek.com"
-            />
-            <p class="setting-hint">API endpoint URL (e.g., https://api.openai.com/v1 or https://api.deepseek.com)</p>
-          </div>
-          
-          <div class="setting-item">
-            <label>API Key</label>
-            <input
-              v-model="openaiApiKey"
-              type="password"
-              placeholder="sk-..."
-            />
-            <p class="setting-hint">Your API key for authentication</p>
-          </div>
-          
-          <div class="setting-item">
-            <label>Model</label>
-            <input
-              v-model="openaiModel"
-              type="text"
-              placeholder="deepseek-chat"
-            />
-            <p class="setting-hint">Model name to use (e.g., gpt-4, deepseek-chat)</p>
-          </div>
-          
-          <div class="setting-item">
-            <label>Timeout (seconds)</label>
-            <input
-              v-model.number="openaiTimeout"
-              type="number"
-              min="10"
-              max="300"
-            />
-            <p class="setting-hint">Request timeout in seconds</p>
-          </div>
-        </div>
-
-        <div v-if="showGeminiFields" class="provider-settings">
-          <div class="setting-item">
-            <label>Base URL</label>
-            <input
-              v-model="geminiEndpoint"
-              type="text"
-              placeholder="https://generativelanguage.googleapis.com"
-            />
-            <p class="setting-hint">Gemini API base URL. Aegis appends the model route automatically.</p>
-          </div>
-
-          <div class="setting-item">
-            <label>API Key</label>
-            <input
-              v-model="geminiApiKey"
-              type="password"
-              placeholder="AIza..."
-            />
-            <p class="setting-hint">Your Google AI Studio or Gemini API key.</p>
-          </div>
-
-          <div class="setting-item">
-            <label>Model</label>
-            <input
-              v-model="geminiModel"
-              type="text"
-              placeholder="gemini-3-flash-preview"
-            />
-            <p class="setting-hint">Model name only, for example gemini-3-flash-preview.</p>
-          </div>
-
-          <div class="setting-item">
-            <label>Timeout (seconds)</label>
-            <input
-              v-model.number="geminiTimeout"
-              type="number"
-              min="10"
-              max="300"
-            />
-            <p class="setting-hint">Request timeout in seconds</p>
+            <p class="setting-hint">{{ field.hint }}</p>
           </div>
         </div>
       </div>

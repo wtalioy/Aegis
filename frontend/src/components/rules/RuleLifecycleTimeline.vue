@@ -37,12 +37,11 @@ const formatDate = (date: string | number | null | undefined, fallbackState?: st
 }
 
 const isDeployed = (rule: Rule) => {
-  const state = (rule as any).state
-  return state === 'testing' || state === 'production'
+  return rule.state === 'testing' || rule.state === 'production'
 }
 
 const isProduction = (rule: Rule) => {
-  return (rule as any).state === 'production'
+  return rule.state === 'production'
 }
 </script>
 
@@ -57,7 +56,7 @@ const isProduction = (rule: Rule) => {
         </div>
         <div class="timeline-content">
           <div class="timeline-label">Created</div>
-          <div class="timeline-date">{{ formatDate((rule as any).created_at) }}</div>
+          <div class="timeline-date">{{ formatDate(rule.createdAt) }}</div>
         </div>
       </div>
 
@@ -68,7 +67,7 @@ const isProduction = (rule: Rule) => {
         </div>
         <div class="timeline-content">
           <div class="timeline-label">Deployed to Testing</div>
-          <div class="timeline-date">{{ formatDate((rule as any).deployed_at, isDeployed(rule) ? 'deployed' : undefined)
+          <div class="timeline-date">{{ formatDate(rule.deployedAt, isDeployed(rule) ? 'deployed' : undefined)
           }}</div>
         </div>
       </div>
@@ -80,7 +79,7 @@ const isProduction = (rule: Rule) => {
         </div>
         <div class="timeline-content">
           <div class="timeline-label">Promoted to Production</div>
-          <div class="timeline-date">{{ formatDate((rule as any).promoted_at, isProduction(rule) ? 'deployed' :
+          <div class="timeline-date">{{ formatDate(rule.promotedAt, isProduction(rule) ? 'deployed' :
             undefined) }}</div>
         </div>
       </div>

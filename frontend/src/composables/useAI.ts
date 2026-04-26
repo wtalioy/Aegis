@@ -1,87 +1,26 @@
 // AI Core Composable
 import { ref } from 'vue'
-
-export interface RuleGenRequest {
-  description: string
-  context?: {
-    currentPage?: string
-    selectedItem?: string
-    recentActions?: string[]
-  }
-  examples?: any[]
-}
-
-export interface RuleGenResponse {
-  rule: any
-  yaml: string
-  reasoning: string
-  confidence: number
-  warnings: string[]
-  simulation?: any
-}
-
-export interface ExplainRequest {
-  eventId?: string
-  eventData?: any
-  question?: string
-}
-
-export interface ExplainResponse {
-  explanation: string
-  rootCause: string
-  matchedRule?: any
-  relatedEvents?: any[]
-  suggestedActions?: any[]
-}
-
-export interface AnalyzeRequest {
-  type: 'process' | 'workload' | 'rule'
-  id: string
-}
-
-export interface AnalyzeResponse {
-  summary: string
-  anomalies: any[]
-  baselineStatus: string
-  recommendations: any[]
-  relatedInsights: any[]
-}
-
-export interface AskInsightRequest {
-  insight: any
-  question: string
-}
-
-export interface AskInsightResponse {
-  answer: string
-  confidence: number
-  related_data?: any
-}
-
-const ANALYSIS_API_BASE = '/api/v1/analysis'
-const SENTINEL_API_BASE = '/api/v1/sentinel'
+import { analyzeContext, askAboutInsight, explainEvent, generateRule } from '../lib/api/analysis'
+import type {
+  AnalyzeRequest,
+  AnalyzeResponse,
+  AskInsightRequest,
+  AskInsightResponse,
+  ExplainRequest,
+  ExplainResponse,
+  RuleGenRequest,
+  RuleGenResponse
+} from '../types/ai'
 
 export function useAI() {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  const generateRule = async (req: RuleGenRequest): Promise<RuleGenResponse | null> => {
+  const runGenerateRule = async (req: RuleGenRequest): Promise<RuleGenResponse | null> => {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${ANALYSIS_API_BASE}/generate-rule`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req)
-      })
-      const text = await response.text()
-      let payload: any = null
-      try { payload = text ? JSON.parse(text) : null } catch { payload = null }
-      if (!response.ok) {
-        error.value = (payload && (payload.error || payload.message)) || `HTTP ${response.status}`
-        return null
-      }
-      return payload as RuleGenResponse
+      return await generateRule(req)
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to generate rule'
       return null
@@ -90,20 +29,11 @@ export function useAI() {
     }
   }
 
-  const explainEvent = async (req: ExplainRequest): Promise<ExplainResponse | null> => {
+  const runExplainEvent = async (req: ExplainRequest): Promise<ExplainResponse | null> => {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${ANALYSIS_API_BASE}/explain`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req)
-      })
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-      const data = await response.json()
-      return data
+      return await explainEvent(req)
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to explain event'
       return null
@@ -112,23 +42,11 @@ export function useAI() {
     }
   }
 
-  const analyzeContext = async (req: AnalyzeRequest): Promise<AnalyzeResponse | null> => {
+  const runAnalyzeContext = async (req: AnalyzeRequest): Promise<AnalyzeResponse | null> => {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${ANALYSIS_API_BASE}/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req)
-      })
-      const text = await response.text()
-      let payload: any = null
-      try { payload = text ? JSON.parse(text) : null } catch { payload = null }
-      if (!response.ok) {
-        error.value = (payload && (payload.error || payload.message)) || `HTTP ${response.status}`
-        return null
-      }
-      return payload as AnalyzeResponse
+      return await analyzeContext(req)
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to analyze context'
       return null
@@ -137,33 +55,11 @@ export function useAI() {
     }
   }
 
-  const getAIStatus = async (): Promise<any> => {
-    try {
-      const res = await fetch(`${ANALYSIS_API_BASE}/status`)
-      const text = await res.text()
-      try { return text ? JSON.parse(text) : null } catch { return null }
-    } catch {
-      return null
-    }
-  }
-
-  const askAboutInsight = async (req: AskInsightRequest): Promise<AskInsightResponse | null> => {
+  const runAskAboutInsight = async (req: AskInsightRequest): Promise<AskInsightResponse | null> => {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${SENTINEL_API_BASE}/ask`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req)
-      })
-      const text = await response.text()
-      let payload: any = null
-      try { payload = text ? JSON.parse(text) : null } catch { payload = null }
-      if (!response.ok) {
-        error.value = (payload && (payload.error || payload.message)) || `HTTP ${response.status}`
-        return null
-      }
-      return payload as AskInsightResponse
+      return await askAboutInsight(req)
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to ask about insight'
       return null
@@ -175,10 +71,9 @@ export function useAI() {
   return {
     loading,
     error,
-    generateRule,
-    explainEvent,
-    analyzeContext,
-    askAboutInsight,
-    getAIStatus
+    generateRule: runGenerateRule,
+    explainEvent: runExplainEvent,
+    analyzeContext: runAnalyzeContext,
+    askAboutInsight: runAskAboutInsight
   }
 }

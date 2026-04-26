@@ -1,21 +1,7 @@
-// Sentinel Composable - Phase 4
 import { ref, onMounted, onUnmounted } from 'vue'
-
-export interface Insight {
-  id: string
-  type: 'testing_promotion' | 'anomaly' | 'optimization' | 'daily_report'
-  title: string
-  summary: string
-  confidence: number
-  severity: 'low' | 'medium' | 'high' | 'critical'
-  data: Record<string, any>
-  actions: Array<{
-    label: string
-    action_id: string
-    params: Record<string, any>
-  }>
-  created_at: string
-}
+import { promoteRule } from '../lib/api'
+import { requestJSON } from '../lib/http'
+import type { Insight } from '../types/sentinel'
 
 const API_BASE = '/api/v1'
 
@@ -30,17 +16,10 @@ export function useSentinel() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`${API_BASE}/sentinel/insights?limit=${limit}`)
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-      const data = await response.json()
-      // Deduplicate by ID in case backend returns duplicates
-      const uniqueMap: Record<string, Insight> = {}
-        ; (data.insights || []).forEach((ins: Insight) => {
-          uniqueMap[ins.id] = ins
-        })
-      insights.value = Object.values(uniqueMap)
+      const data = await requestJSON<{ insights: Insight[], total: number }>(`${API_BASE}/sentinel/insights?limit=${limit}`)
+      const uniqueMap = new Map<string, Insight>()
+      data.insights.forEach((insight) => uniqueMap.set(insight.id, insight))
+      insights.value = Array.from(uniqueMap.values())
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to fetch insights'
     } finally {
@@ -49,54 +28,26 @@ export function useSentinel() {
   }
 
   const subscribe = () => {
-    // Close existing connection if any
-    if (eventSource.value) {
-      eventSource.value.close()
-      eventSource.value = null
-    }
-
-    const sseUrl = `${API_BASE}/sentinel/stream`
+    unsubscribe()
 
     try {
-      eventSource.value = new EventSource(sseUrl)
-
-      // EventSource connection is established when the object is created
-      // Check readyState immediately and set connected
-      const checkConnection = () => {
-        if (eventSource.value) {
-          if (eventSource.value.readyState === EventSource.OPEN || eventSource.value.readyState === EventSource.CONNECTING) {
-            connected.value = true
-            error.value = null
-            console.log('[Sentinel] SSE connecting/connected, readyState:', eventSource.value.readyState)
-          }
-        }
-      }
-
-      // Check immediately
-      checkConnection()
-
-      // Also check after a short delay to ensure connection is established
-      setTimeout(checkConnection, 100)
+      eventSource.value = new EventSource(`${API_BASE}/sentinel/stream`)
 
       eventSource.value.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
-
-          // Handle heartbeat - this confirms connection is alive
           if (data.type === 'heartbeat') {
             connected.value = true
             error.value = null
             return
           }
 
-          // Handle insight
-          const insight: Insight = data
-          // Deduplicate based on insight id
-          if (!insights.value.some(i => i.id === insight.id)) {
-            // Add to beginning of list
+          const insight = data as Insight
+          connected.value = true
+          error.value = null
+          if (!insights.value.some(existing => existing.id === insight.id)) {
             insights.value.unshift(insight)
           }
-          // Keep only last 100
           if (insights.value.length > 100) {
             insights.value = insights.value.slice(0, 100)
           }
@@ -105,22 +56,15 @@ export function useSentinel() {
         }
       }
 
-      eventSource.value.onerror = (err) => {
-        console.error('[Sentinel] SSE error:', err, 'readyState:', eventSource.value?.readyState)
-
-        // EventSource readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
+      eventSource.value.onerror = () => {
+        connected.value = false
         if (eventSource.value?.readyState === EventSource.CLOSED) {
-          connected.value = false
           error.value = 'Connection closed. EventSource will attempt to reconnect automatically.'
-        } else if (eventSource.value?.readyState === EventSource.CONNECTING) {
-          // Still connecting, don't mark as disconnected yet
-          connected.value = false
         }
       }
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to connect to Sentinel'
       connected.value = false
-      console.error('[Sentinel] Failed to create EventSource:', err)
     }
   }
 
@@ -133,35 +77,32 @@ export function useSentinel() {
   }
 
   const executeAction = async (insight: Insight, actionId: string) => {
-    const action = insight.actions.find(a => a.action_id === actionId)
+    const action = insight.actions.find(item => item.actionId === actionId)
     if (!action) {
-      console.warn('Action not found:', actionId)
       return
     }
 
     try {
       switch (actionId) {
         case 'promote':
-          // Call promote rule API
-          const response = await fetch(`${API_BASE}/policies/${action.params.rule_name}/promote`, {
-            method: 'POST'
-          })
-          if (response.ok) {
-            // Remove insight or mark as resolved
-            insights.value = insights.value.filter(i => i.id !== insight.id)
+          if (typeof action.params.ruleName === 'string') {
+            await promoteRule(action.params.ruleName)
+            insights.value = insights.value.filter(item => item.id !== insight.id)
           }
           break
-
         case 'investigate':
-          // Navigate to investigation page
-          window.location.href = `/investigation?event=${action.params.event_id}`
+          if (typeof action.params.page === 'string') {
+            window.location.href = `/${action.params.page}`
+          }
           break
-
+        case 'navigate':
+          if (typeof action.params.page === 'string') {
+            window.location.href = `/${action.params.page}`
+          }
+          break
         case 'dismiss':
-          // Remove insight
-          insights.value = insights.value.filter(i => i.id !== insight.id)
+          insights.value = insights.value.filter(item => item.id !== insight.id)
           break
-
         default:
           console.warn('Unknown action:', actionId)
       }
@@ -190,3 +131,5 @@ export function useSentinel() {
     executeAction
   }
 }
+
+export type { Insight }

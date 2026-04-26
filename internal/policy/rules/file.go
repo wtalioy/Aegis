@@ -92,19 +92,7 @@ func (m *fileMatcher) Match(ino, dev uint64, filename string, pid uint32, cgroup
 		return false, nil, false
 	}
 
-	variants := utils.PathVariants(filename)
-	if len(variants) == 0 && filename != "" {
-		if normalized := utils.NormalizeFilename(filename); normalized != "" {
-			variants = append(variants, normalized)
-		}
-	}
-
-	event := fileEvent{
-		filename:     filename,
-		pathVariants: variants,
-		pid:          pid,
-		cgroupID:     cgroupID,
-	}
+	event := newFileEvent(filename, pid, cgroupID)
 
 	if rules := m.inodeRules[InodeKey{Ino: ino, Dev: dev}]; len(rules) > 0 {
 		inodeEvent := event
@@ -286,19 +274,7 @@ func (m *fileMatcher) getCandidateRules(event fileEvent, ino, dev uint64) []*Rul
 }
 
 func (m *fileMatcher) CollectAlerts(ino, dev uint64, filename string, pid uint32, cgroupID uint64, processName string) []MatchedAlert {
-	variants := utils.PathVariants(filename)
-	if len(variants) == 0 && filename != "" {
-		if normalized := utils.NormalizeFilename(filename); normalized != "" {
-			variants = append(variants, normalized)
-		}
-	}
-
-	event := fileEvent{
-		filename:     filename,
-		pathVariants: variants,
-		pid:          pid,
-		cgroupID:     cgroupID,
-	}
+	event := newFileEvent(filename, pid, cgroupID)
 
 	candidates := m.getCandidateRules(event, ino, dev)
 
@@ -333,4 +309,20 @@ func (m *fileMatcher) CollectAlerts(ino, dev uint64, filename string, pid uint32
 	}
 
 	return alerts
+}
+
+func newFileEvent(filename string, pid uint32, cgroupID uint64) fileEvent {
+	variants := utils.PathVariants(filename)
+	if len(variants) == 0 && filename != "" {
+		if normalized := utils.NormalizeFilename(filename); normalized != "" {
+			variants = append(variants, normalized)
+		}
+	}
+
+	return fileEvent{
+		filename:     filename,
+		pathVariants: variants,
+		pid:          pid,
+		cgroupID:     cgroupID,
+	}
 }

@@ -1,30 +1,75 @@
 package httpapi
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"aegis/internal/policy"
+	"aegis/internal/policy/rules"
 
 	"gopkg.in/yaml.v3"
 )
 
+type policyMatchDTO struct {
+	ProcessName     string `json:"processName,omitempty"`
+	ProcessNameType string `json:"processNameType,omitempty"`
+	ParentName      string `json:"parentName,omitempty"`
+	ParentNameType  string `json:"parentNameType,omitempty"`
+	PID             uint32 `json:"pid,omitempty"`
+	PPID            uint32 `json:"ppid,omitempty"`
+	Filename        string `json:"filename,omitempty"`
+	DestPort        uint16 `json:"destPort,omitempty"`
+	DestIP          string `json:"destIp,omitempty"`
+	CgroupID        string `json:"cgroupId,omitempty"`
+}
+
+type policyRuleDTO struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Severity    string         `json:"severity"`
+	Action      string         `json:"action"`
+	Type        string         `json:"type"`
+	State       string         `json:"state"`
+	Match       policyMatchDTO `json:"match"`
+	YAML        string         `json:"yaml"`
+	CreatedAt   time.Time      `json:"createdAt,omitempty"`
+	DeployedAt  *time.Time     `json:"deployedAt,omitempty"`
+	PromotedAt  *time.Time     `json:"promotedAt,omitempty"`
+}
+
+type policyWriteRequest struct {
+	Rule policyRuleDTO `json:"rule"`
+}
+
+type policyWriteResponse struct {
+	Success bool          `json:"success"`
+	Rule    policyRuleDTO `json:"rule"`
+}
+
+type policySuccessResponse struct {
+	Success bool `json:"success"`
+}
+
+type testingRuleDTO struct {
+	policyRuleDTO
+	Validation policy.PromotionReadiness `json:"validation"`
+	Stats      policy.TestingStats       `json:"stats"`
+}
+
 func registerPolicyRoutes(mux *http.ServeMux, deps Dependencies) {
 	registerAliases(mux, []string{"/api/v1/policies/testing"}, func(w http.ResponseWriter, r *http.Request) {
 		setCORS(w)
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		items := deps.Policy.TestingRules()
-		payload := make([]map[string]any, 0, len(items))
+		payload := make([]testingRuleDTO, 0, len(items))
 		for _, item := range items {
-			payload = append(payload, map[string]any{
-				"rule":       policyRuleDTO(item.Rule),
-				"validation": item.Validation,
-				"stats":      item.Stats,
+			payload = append(payload, testingRuleDTO{
+				policyRuleDTO: toPolicyRuleDTO(item.Rule),
+				Validation:    item.Validation,
+				Stats:         item.Stats,
 			})
 		}
 		writeJSON(w, http.StatusOK, payload)
@@ -32,8 +77,7 @@ func registerPolicyRoutes(mux *http.ServeMux, deps Dependencies) {
 
 	registerAliasesWithPrefix(mux, []string{"/api/v1/policies/validation/"}, func(w http.ResponseWriter, r *http.Request, name string) {
 		setCORS(w)
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		readiness, stats, err := deps.Policy.Validation(name)
@@ -41,11 +85,15 @@ func registerPolicyRoutes(mux *http.ServeMux, deps Dependencies) {
 			writeError(w, http.StatusNotFound, err)
 			return
 		}
-		rule, _ := deps.Policy.Get(name)
-		writeJSON(w, http.StatusOK, map[string]any{
-			"rule":       policyRuleDTOValue(rule),
-			"validation": readiness,
-			"stats":      stats,
+		rule, ok := deps.Policy.Get(name)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, testingRuleDTO{
+			policyRuleDTO: toPolicyRuleDTOValue(rule),
+			Validation:    readiness,
+			Stats:         stats,
 		})
 	})
 
@@ -54,33 +102,25 @@ func registerPolicyRoutes(mux *http.ServeMux, deps Dependencies) {
 		switch r.Method {
 		case http.MethodGet:
 			ruleList := deps.Policy.List()
-			payload := make([]map[string]any, 0, len(ruleList))
+			payload := make([]policyRuleDTO, 0, len(ruleList))
 			for _, rule := range ruleList {
-				payload = append(payload, policyRuleDTO(rule))
+				payload = append(payload, toPolicyRuleDTO(rule))
 			}
 			writeJSON(w, http.StatusOK, payload)
 		case http.MethodPost:
-			var req struct {
-				Rule map[string]any `json:"rule"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			var req policyWriteRequest
+			if err := decodeJSON(r, &req); err != nil {
 				writeError(w, http.StatusBadRequest, err)
 				return
 			}
-			rule, err := decodePolicyRule(req.Rule)
-			if err != nil {
-				writeError(w, http.StatusBadRequest, err)
-				return
-			}
-			created, err := deps.Policy.Create(rule)
+			created, err := deps.Policy.Create(fromPolicyRuleDTO(req.Rule))
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"success": true, "rule": policyRuleDTO(created)})
+			writeJSON(w, http.StatusOK, policyWriteResponse{Success: true, Rule: toPolicyRuleDTO(created)})
 		case http.MethodOptions:
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			allowJSONOptions(w, http.MethodGet, http.MethodPost)
 		default:
 			methodNotAllowed(w)
 		}
@@ -95,15 +135,14 @@ func registerPolicyRoutes(mux *http.ServeMux, deps Dependencies) {
 
 		if strings.HasSuffix(suffix, "/promote") {
 			name := strings.TrimSuffix(suffix, "/promote")
-			if r.Method != http.MethodPost {
-				methodNotAllowed(w)
+			if !requireMethod(w, r, http.MethodPost) {
 				return
 			}
 			if err := deps.Policy.Promote(name); err != nil {
 				writeError(w, http.StatusBadRequest, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"success": true})
+			writeJSON(w, http.StatusOK, policySuccessResponse{Success: true})
 			return
 		}
 
@@ -115,185 +154,89 @@ func registerPolicyRoutes(mux *http.ServeMux, deps Dependencies) {
 				http.NotFound(w, r)
 				return
 			}
-			writeJSON(w, http.StatusOK, policyRuleDTOValue(rule))
+			writeJSON(w, http.StatusOK, toPolicyRuleDTOValue(rule))
 		case http.MethodPut:
-			var req struct {
-				Rule map[string]any `json:"rule"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			var req policyWriteRequest
+			if err := decodeJSON(r, &req); err != nil {
 				writeError(w, http.StatusBadRequest, err)
 				return
 			}
-			rule, err := decodePolicyRule(req.Rule)
+			updated, err := deps.Policy.Update(name, fromPolicyRuleDTO(req.Rule))
 			if err != nil {
 				writeError(w, http.StatusBadRequest, err)
 				return
 			}
-			updated, err := deps.Policy.Update(name, rule)
-			if err != nil {
-				writeError(w, http.StatusBadRequest, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]any{"success": true, "rule": policyRuleDTO(updated)})
+			writeJSON(w, http.StatusOK, policyWriteResponse{Success: true, Rule: toPolicyRuleDTO(updated)})
 		case http.MethodDelete:
 			if err := deps.Policy.Delete(name); err != nil {
 				writeError(w, http.StatusBadRequest, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"success": true})
+			writeJSON(w, http.StatusOK, policySuccessResponse{Success: true})
 		case http.MethodOptions:
-			w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, DELETE, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			allowJSONOptions(w, http.MethodGet, http.MethodPut, http.MethodDelete, http.MethodPost)
 		default:
 			methodNotAllowed(w)
 		}
 	})
 }
 
-func policyRuleDTO(rule policy.Rule) map[string]any {
-	cleanRule := policy.CleanRuleForYAML(rule)
+func toPolicyRuleDTO(rule policy.Rule) policyRuleDTO {
+	cleanRule := rules.CleanRuleForYAML(rule)
 	yamlBytes, _ := yaml.Marshal(cleanRule)
 
-	return map[string]any{
-		"name":        rule.Name,
-		"description": rule.Description,
-		"severity":    rule.Severity,
-		"action":      string(rule.Action),
-		"type":        string(rule.DeriveType()),
-		"state":       string(rule.State),
-		"match":       policyMatchMap(rule.Match),
-		"yaml":        string(yamlBytes),
-		"created_at":  rule.CreatedAt,
-		"deployed_at": rule.DeployedAt,
-		"promoted_at": rule.PromotedAt,
+	return policyRuleDTO{
+		Name:        rule.Name,
+		Description: rule.Description,
+		Severity:    rule.Severity,
+		Action:      string(rule.Action),
+		Type:        string(rule.DeriveType()),
+		State:       string(rule.State),
+		Match: policyMatchDTO{
+			ProcessName:     rule.Match.ProcessName,
+			ProcessNameType: string(rule.Match.ProcessNameType),
+			ParentName:      rule.Match.ParentName,
+			ParentNameType:  string(rule.Match.ParentNameType),
+			PID:             rule.Match.PID,
+			PPID:            rule.Match.PPID,
+			Filename:        rule.Match.Filename,
+			DestPort:        rule.Match.DestPort,
+			DestIP:          rule.Match.DestIP,
+			CgroupID:        rule.Match.CgroupID,
+		},
+		YAML:       string(yamlBytes),
+		CreatedAt:  rule.CreatedAt,
+		DeployedAt: rule.DeployedAt,
+		PromotedAt: rule.PromotedAt,
 	}
 }
 
-func policyRuleDTOValue(rule *policy.Rule) map[string]any {
+func toPolicyRuleDTOValue(rule *policy.Rule) policyRuleDTO {
 	if rule == nil {
-		return nil
+		return policyRuleDTO{}
 	}
-	return policyRuleDTO(*rule)
+	return toPolicyRuleDTO(*rule)
 }
 
-func policyMatchMap(match policy.MatchCondition) map[string]any {
-	result := make(map[string]any)
-	if match.ProcessName != "" {
-		result["process_name"] = match.ProcessName
-	}
-	if match.ProcessNameType != "" {
-		result["process_name_type"] = string(match.ProcessNameType)
-	}
-	if match.ParentName != "" {
-		result["parent_name"] = match.ParentName
-	}
-	if match.ParentNameType != "" {
-		result["parent_name_type"] = string(match.ParentNameType)
-	}
-	if match.PID != 0 {
-		result["pid"] = match.PID
-	}
-	if match.PPID != 0 {
-		result["ppid"] = match.PPID
-	}
-	if match.Filename != "" {
-		result["filename"] = match.Filename
-	}
-	if match.DestPort != 0 {
-		result["dest_port"] = match.DestPort
-	}
-	if match.DestIP != "" {
-		result["dest_ip"] = match.DestIP
-	}
-	if match.CgroupID != "" {
-		result["cgroup_id"] = match.CgroupID
-	}
-	return result
-}
-
-func decodePolicyRule(raw map[string]any) (policy.Rule, error) {
-	var rule policy.Rule
-	if raw == nil {
-		return rule, fmt.Errorf("missing rule payload")
-	}
-	if value, ok := raw["name"].(string); ok {
-		rule.Name = value
-	}
-	if value, ok := raw["description"].(string); ok {
-		rule.Description = value
-	}
-	if value, ok := raw["severity"].(string); ok {
-		rule.Severity = value
-	}
-	if value, ok := raw["action"].(string); ok {
-		rule.Action = policy.ActionType(value)
-	}
-	if value, ok := raw["type"].(string); ok {
-		rule.Type = policy.RuleType(value)
-	}
-	if value, ok := raw["state"].(string); ok {
-		rule.State = policy.RuleState(value)
-	}
-	if value, ok := raw["mode"].(string); ok && rule.State == "" {
-		rule.State = policy.RuleState(value)
-	}
-	if matchRaw, ok := raw["match"].(map[string]any); ok {
-		if value, ok := matchRaw["process_name"].(string); ok {
-			rule.Match.ProcessName = value
-		}
-		if value, ok := matchRaw["process_name_type"].(string); ok {
-			rule.Match.ProcessNameType = policy.MatchType(value)
-		}
-		if value, ok := matchRaw["parent_name"].(string); ok {
-			rule.Match.ParentName = value
-		}
-		if value, ok := matchRaw["parent_name_type"].(string); ok {
-			rule.Match.ParentNameType = policy.MatchType(value)
-		}
-		if value, ok := matchRaw["filename"].(string); ok {
-			rule.Match.Filename = value
-		}
-		if value, ok := matchRaw["dest_ip"].(string); ok {
-			rule.Match.DestIP = value
-		}
-		if value, ok := matchRaw["cgroup_id"].(string); ok {
-			rule.Match.CgroupID = value
-		}
-		if value, ok := numberToUint32(matchRaw["pid"]); ok {
-			rule.Match.PID = value
-		}
-		if value, ok := numberToUint32(matchRaw["ppid"]); ok {
-			rule.Match.PPID = value
-		}
-		if value, ok := numberToUint16(matchRaw["dest_port"]); ok {
-			rule.Match.DestPort = value
-		}
-	}
-	return rule, nil
-}
-
-func numberToUint16(value any) (uint16, bool) {
-	switch v := value.(type) {
-	case float64:
-		return uint16(v), true
-	case int:
-		return uint16(v), true
-	case int64:
-		return uint16(v), true
-	default:
-		return 0, false
-	}
-}
-
-func numberToUint32(value any) (uint32, bool) {
-	switch v := value.(type) {
-	case float64:
-		return uint32(v), true
-	case int:
-		return uint32(v), true
-	case int64:
-		return uint32(v), true
-	default:
-		return 0, false
+func fromPolicyRuleDTO(dto policyRuleDTO) policy.Rule {
+	return policy.Rule{
+		Name:        dto.Name,
+		Description: dto.Description,
+		Severity:    dto.Severity,
+		Action:      policy.ActionType(dto.Action),
+		Type:        policy.RuleType(dto.Type),
+		State:       policy.RuleState(dto.State),
+		Match: policy.MatchCondition{
+			ProcessName:     dto.Match.ProcessName,
+			ProcessNameType: policy.MatchType(dto.Match.ProcessNameType),
+			ParentName:      dto.Match.ParentName,
+			ParentNameType:  policy.MatchType(dto.Match.ParentNameType),
+			PID:             dto.Match.PID,
+			PPID:            dto.Match.PPID,
+			Filename:        dto.Match.Filename,
+			DestPort:        dto.Match.DestPort,
+			DestIP:          dto.Match.DestIP,
+			CgroupID:        dto.Match.CgroupID,
+		},
 	}
 }

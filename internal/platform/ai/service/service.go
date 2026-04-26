@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"aegis/internal/analysis/types"
@@ -31,27 +30,11 @@ func NewClient(p providers.Provider) *Service {
 }
 
 func NewService(opts config.AIOptions) (*Service, error) {
-	var provider providers.Provider
-
-	switch opts.Mode {
-	case "ollama":
-		provider = providers.NewOllamaProvider(opts.Ollama)
-	case "openai":
-		provider = providers.NewOpenAIProvider(opts.OpenAI)
-	case "gemini":
-		provider = providers.NewGeminiProvider(opts.Gemini)
-	default:
-		return nil, fmt.Errorf("unknown AI mode: %s", opts.Mode)
+	provider, err := newProvider(opts)
+	if err != nil {
+		return nil, err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := provider.CheckHealth(ctx); err != nil {
-		log.Printf("[AI] Warning: Provider health check failed: %v", err)
-	} else {
-		log.Printf("[AI] Provider %s initialized successfully", provider.Name())
-	}
-
+	logProviderHealth(provider)
 	return NewClient(provider), nil
 }
 
@@ -93,14 +76,17 @@ func (s *Service) Diagnose(
 	store storage.EventStore,
 	processTree *proc.ProcessTree,
 ) (*types.DiagnosisResult, error) {
-	provider, err := s.requireProvider()
+	provider, result, err := s.providerAndSnapshot(runtimeDeps{
+		statsProvider: statsProvider,
+		workloadReg:   workloadReg,
+		store:         store,
+		processTree:   processTree,
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	startTime := time.Now()
-
-	result := s.buildSnapshot(statsProvider, workloadReg, store, processTree)
 	promptText, err := diagnostics.BuildPrompt(result.State)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate prompt: %w", err)
@@ -130,7 +116,12 @@ func (s *Service) Chat(
 	store storage.EventStore,
 	processTree *proc.ProcessTree,
 ) (*types.ChatResponse, error) {
-	provider, err := s.requireProvider()
+	provider, result, err := s.providerAndSnapshot(runtimeDeps{
+		statsProvider: statsProvider,
+		workloadReg:   workloadReg,
+		store:         store,
+		processTree:   processTree,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -139,8 +130,6 @@ func (s *Service) Chat(
 
 	conv := s.conversations.GetOrCreate(sessionID)
 	history := s.conversations.GetMessages(sessionID)
-
-	result := s.buildSnapshot(statsProvider, workloadReg, store, processTree)
 	messages := chat.BuildMessages(history, result.State, userMessage, processTree, result.ProcessKeyToChain, result.ProcessNameToChain)
 
 	response, err := provider.MultiChat(ctx, messages)
@@ -172,15 +161,18 @@ func (s *Service) ChatStream(
 	store storage.EventStore,
 	processTree *proc.ProcessTree,
 ) (<-chan types.ChatStreamToken, error) {
-	provider, err := s.requireProvider()
+	provider, result, err := s.providerAndSnapshot(runtimeDeps{
+		statsProvider: statsProvider,
+		workloadReg:   workloadReg,
+		store:         store,
+		processTree:   processTree,
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	s.conversations.GetOrCreate(sessionID)
 	history := s.conversations.GetMessages(sessionID)
-
-	result := s.buildSnapshot(statsProvider, workloadReg, store, processTree)
 	messages := chat.BuildMessages(history, result.State, userMessage, processTree, result.ProcessKeyToChain, result.ProcessNameToChain)
 
 	tokenChan, err := provider.MultiChatStream(ctx, messages)

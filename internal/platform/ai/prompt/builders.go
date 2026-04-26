@@ -11,7 +11,6 @@ import (
 	"aegis/internal/platform/events"
 	"aegis/internal/platform/storage"
 	"aegis/internal/policy/rules"
-	"aegis/internal/shared/utils"
 	"aegis/internal/telemetry/proc"
 	"aegis/internal/telemetry/workload"
 )
@@ -218,44 +217,12 @@ func BuildExplainContext(event *storage.Event, pid uint32, store storage.EventSt
 				if ev == nil || ev.Timestamp.Before(windowStart) {
 					continue
 				}
-				var evPID uint32
-				var eventTypeStr string
-				switch e := ev.Data.(type) {
-				case *events.ExecEvent:
-					evPID = e.Hdr.PID
-					eventTypeStr = "exec"
-				case *events.FileOpenEvent:
-					evPID = e.Hdr.PID
-					eventTypeStr = "file"
-				case *events.ConnectEvent:
-					evPID = e.Hdr.PID
-					eventTypeStr = "connect"
-				default:
-					// Try to infer from storage.Event.Type
-					switch ev.Type {
-					case events.EventTypeExec:
-						eventTypeStr = "exec"
-					case events.EventTypeFileOpen:
-						eventTypeStr = "file"
-					case events.EventTypeConnect:
-						eventTypeStr = "connect"
-					default:
-						eventTypeStr = "unknown"
-					}
-					// Try to extract PID from map[string]any if available
-					if m, ok := ev.Data.(map[string]any); ok {
-						if hdr, ok := m["header"].(map[string]any); ok {
-							if v, ok := hdr["pid"].(float64); ok {
-								evPID = uint32(v)
-							}
-						}
-						if v, ok := m["pid"].(float64); ok {
-							evPID = uint32(v)
-						}
-					}
+				view, ok := storage.View(ev)
+				if !ok {
+					continue
 				}
-				if evPID == pid && evPID != 0 && relatedCount < 5 {
-					b.WriteString(fmt.Sprintf("- %s: %s\n", ev.Timestamp.Format("15:04:05"), eventTypeStr))
+				if view.PID == pid && view.PID != 0 && relatedCount < 5 {
+					b.WriteString(fmt.Sprintf("- %s: %s\n", ev.Timestamp.Format("15:04:05"), eventTypeLabel(view.Type)))
 					relatedCount++
 				}
 			}
@@ -286,74 +253,30 @@ func FormatEventForExplanation(event *storage.Event, profile *proc.ProcessProfil
 	b.WriteString("Event\n")
 	b.WriteString(fmt.Sprintf("- Time: %s\n", event.Timestamp.Format(time.RFC3339)))
 
-	switch ev := event.Data.(type) {
-	case *events.ExecEvent:
-		b.WriteString("- Type: exec\n")
-		b.WriteString(fmt.Sprintf("- PID: %d\n", ev.Hdr.PID))
-		b.WriteString(fmt.Sprintf("- PPID: %d\n", ev.PPID))
-		b.WriteString(fmt.Sprintf("- Comm: %s\n", strings.TrimRight(string(ev.Hdr.Comm[:]), "\x00")))
-		b.WriteString(fmt.Sprintf("- ParentComm: %s\n", strings.TrimRight(string(ev.PComm[:]), "\x00")))
-	case *events.FileOpenEvent:
-		b.WriteString("- Type: file\n")
-		b.WriteString(fmt.Sprintf("- PID: %d\n", ev.Hdr.PID))
-		b.WriteString(fmt.Sprintf("- Comm: %s\n", strings.TrimRight(string(ev.Hdr.Comm[:]), "\x00")))
-		b.WriteString(fmt.Sprintf("- Filename: %s\n", utils.ExtractCString(ev.Filename[:])))
-		b.WriteString(fmt.Sprintf("- Flags: %d, Dev: %d, Ino: %d\n", ev.Flags, ev.Dev, ev.Ino))
-	case *events.ConnectEvent:
-		b.WriteString("- Type: connect\n")
-		b.WriteString(fmt.Sprintf("- PID: %d\n", ev.Hdr.PID))
-		b.WriteString(fmt.Sprintf("- Comm: %s\n", strings.TrimRight(string(ev.Hdr.Comm[:]), "\x00")))
-		ip := utils.ExtractIP(ev)
-		b.WriteString(fmt.Sprintf("- Remote: %s:%d (family=%d)\n", ip, ev.Port, ev.Family))
-	case map[string]any:
-		typeStr, _ := ev["type"].(string)
-		if typeStr == "" {
-			switch event.Type {
-			case events.EventTypeExec:
-				typeStr = "exec"
-			case events.EventTypeFileOpen:
-				typeStr = "file"
-			case events.EventTypeConnect:
-				typeStr = "connect"
-			}
-		}
-		b.WriteString(fmt.Sprintf("- Type: %s\n", typeStr))
-		if hdr, ok := ev["header"].(map[string]any); ok {
-			if v, ok := hdr["pid"].(float64); ok {
-				b.WriteString(fmt.Sprintf("- PID: %d\n", uint32(v)))
-			}
-			if comm, ok := hdr["comm"].(string); ok {
-				b.WriteString(fmt.Sprintf("- Comm: %s\n", comm))
-			}
-		}
-		if v, ok := ev["pid"].(float64); ok {
-			b.WriteString(fmt.Sprintf("- PID: %d\n", uint32(v)))
-		}
-		if comm, ok := ev["comm"].(string); ok {
-			b.WriteString(fmt.Sprintf("- Comm: %s\n", comm))
-		}
-		if parentComm, ok := ev["parentComm"].(string); ok {
-			b.WriteString(fmt.Sprintf("- ParentComm: %s\n", parentComm))
-		}
-		if filename, ok := ev["filename"].(string); ok && filename != "" {
-			b.WriteString(fmt.Sprintf("- Filename: %s\n", filename))
-		}
-		if addr, ok := ev["addr"].(string); ok && addr != "" {
-			port := 0
-			if p, ok := ev["port"].(float64); ok {
-				port = int(p)
-			}
-			procName := ""
-			if pn, ok := ev["processName"].(string); ok {
-				procName = pn
-			}
-			if procName != "" {
-				b.WriteString(fmt.Sprintf("- Process: %s\n", procName))
-			}
-			b.WriteString(fmt.Sprintf("- Remote: %s:%d\n", addr, port))
-		}
-	default:
+	view, ok := storage.View(event)
+	if !ok {
 		b.WriteString(fmt.Sprintf("- Type: %d\n", int(event.Type)))
+	} else {
+		b.WriteString(fmt.Sprintf("- Type: %s\n", eventTypeLabel(view.Type)))
+		b.WriteString(fmt.Sprintf("- PID: %d\n", view.PID))
+		if view.PPID != 0 {
+			b.WriteString(fmt.Sprintf("- PPID: %d\n", view.PPID))
+		}
+		if view.ProcessName != "" {
+			b.WriteString(fmt.Sprintf("- Comm: %s\n", view.ProcessName))
+		}
+		if view.ParentName != "" {
+			b.WriteString(fmt.Sprintf("- ParentComm: %s\n", view.ParentName))
+		}
+		if view.Filename != "" {
+			b.WriteString(fmt.Sprintf("- Filename: %s\n", view.Filename))
+		}
+		if view.Type == events.EventTypeFileOpen {
+			b.WriteString(fmt.Sprintf("- Flags: %d, Dev: %d, Ino: %d\n", view.Flags, view.Dev, view.Ino))
+		}
+		if view.Type == events.EventTypeConnect {
+			b.WriteString(fmt.Sprintf("- Remote: %s:%d (family=%d)\n", view.Address, view.Port, view.Family))
+		}
 	}
 
 	if profile != nil {
@@ -377,6 +300,19 @@ func FormatEventForExplanation(event *storage.Event, profile *proc.ProcessProfil
 	}
 
 	return b.String()
+}
+
+func eventTypeLabel(eventType events.EventType) string {
+	switch eventType {
+	case events.EventTypeExec:
+		return "exec"
+	case events.EventTypeFileOpen:
+		return "file"
+	case events.EventTypeConnect:
+		return "connect"
+	default:
+		return "unknown"
+	}
 }
 
 func BuildRuleGenPrompt(req *types.RuleGenRequest, examplesYAML string) string {

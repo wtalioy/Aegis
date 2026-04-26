@@ -1,210 +1,36 @@
 <!-- Policy Studio Page - Redesigned with Rules.vue inspiration -->
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
 import {
   Sparkles, FileCode, Search, Filter, RefreshCw,
   ShieldOff, AlertTriangle, ShieldCheck, X
 } from 'lucide-vue-next'
-import { getRules, createRule, updateRule, deleteRule } from '../lib/api'
-import type { Rule } from '../types/rules'
 import RuleCard from '../components/rules/RuleCard.vue'
 import AIRuleCreator from '../components/policy/AIRuleCreator.vue'
 import ManualRuleCreator from '../components/policy/ManualRuleCreator.vue'
 import DeployConfirm from '../components/policy/DeployConfirm.vue'
 import AIRulePreview from '../components/policy/AIRulePreview.vue'
 import Select from '../components/common/Select.vue'
+import { usePolicyStudio } from '../composables/usePolicyStudio'
 
-const router = useRouter()
-
-const rules = ref<Rule[]>([])
-const selectedRule = ref<Rule | null>(null)
-const generatedRule = ref<any>(null)
-const showDeployConfirm = ref(false)
-const createMode = ref<'manual' | 'ai'>('manual')
-const loading = ref(true)
-const searchQuery = ref('')
-const filterAction = ref<string>('all')
-
-const normalizeRuleState = (state: any): 'draft' | 'testing' | 'production' => {
-  // Handle null, undefined, or empty string
-  if (!state || state === '') return 'draft'
-
-  // Convert to string and normalize case
-  const stateStr = String(state).toLowerCase().trim()
-
-  // Map valid states
-  if (stateStr === 'testing') return 'testing'
-  if (stateStr === 'production') return 'production'
-  if (stateStr === 'draft') return 'draft'
-
-  // Default to draft for unknown values
-  return 'draft'
-}
-
-const fetchRules = async () => {
-  loading.value = true
-  try {
-    const apiRules = await getRules()
-    rules.value = apiRules.map(rule => {
-      const rawState = (rule as any).state
-      return {
-        ...rule,
-        state: normalizeRuleState(rawState),
-        action: (rule.action === 'alert' ? 'monitor' : rule.action) as 'block' | 'monitor' | 'allow',
-        severity: rule.severity as 'critical' | 'high' | 'warning' | 'info',
-        match: rule.match || {}
-      }
-    })
-  } catch (e) {
-    console.error('Failed to fetch rules:', e)
-    rules.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
-const filteredRules = computed(() => {
-  let result = rules.value
-
-  if (filterAction.value !== 'all') {
-    result = result.filter(r => r.action === filterAction.value)
-  }
-
-  if (searchQuery.value.trim()) {
-    const query = searchQuery.value.toLowerCase()
-    result = result.filter(r =>
-      r.name.toLowerCase().includes(query) ||
-      r.description.toLowerCase().includes(query)
-    )
-  }
-
-  return result
-})
-
-const stats = computed(() => ({
-  total: rules.value.length,
-  block: rules.value.filter(r => r.action === 'block').length,
-  alert: rules.value.filter(r => r.action === 'monitor').length,
-  allow: rules.value.filter(r => r.action === 'allow').length,
-  testing: rules.value.filter(r => (r as any).state === 'testing').length,
-  production: rules.value.filter(r => (r as any).state === 'production').length,
-}))
-
-const handleRuleSelect = (rule: Rule) => {
-  selectedRule.value = rule
-  // Switch to manual mode for editing
-  createMode.value = 'manual'
-  // Clear any generated rule preview
-  generatedRule.value = null
-}
-
-
-const handleManualRuleCreated = (rule: Partial<Rule>) => {
-  // Convert manual rule to generated rule format for preview
-  generatedRule.value = {
-    rule: rule as Rule,
-    yaml: rule.yaml || '',
-    reasoning: 'Manually created rule',
-    confidence: 1.0,
-    warnings: []
-  }
-  // Switch to AI preview to show the created rule
-  createMode.value = 'ai'
-}
-
-const handleManualRuleUpdated = async (rule: Partial<Rule>) => {
-  if (!selectedRule.value) return
-
-  try {
-    const updatedRule = await updateRule(selectedRule.value.name, rule as Rule)
-    // Refresh rules list
-    await fetchRules()
-    // Update selected rule
-    selectedRule.value = updatedRule as Rule
-    // Clear selection to show create mode
-    selectedRule.value = null
-  } catch (error) {
-    console.error('Failed to update rule:', error)
-    alert(`Failed to update rule: ${error instanceof Error ? error.message : 'Unknown error'}`)
-  }
-}
-
-const handleEditCancel = () => {
-  selectedRule.value = null
-  generatedRule.value = null
-  createMode.value = 'manual'
-}
-
-const handleRuleDeleted = async (ruleName: string) => {
-  try {
-    await deleteRule(ruleName)
-    // Refresh rules list
-    await fetchRules()
-    // Clear selection
-    selectedRule.value = null
-    generatedRule.value = null
-    createMode.value = 'manual'
-  } catch (error) {
-    console.error('Failed to delete rule:', error)
-    alert(`Failed to delete rule: ${error instanceof Error ? error.message : 'Unknown error'}`)
-  }
-}
-
-const handleConfirmDeploy = async () => {
-  const ruleToDeploy = generatedRule.value?.rule || selectedRule.value
-  if (!ruleToDeploy) {
-    console.error('No rule to deploy')
-    return
-  }
-
-  try {
-    // Set the rule state to testing (backend expects 'state' field)
-    const ruleWithState = {
-      ...ruleToDeploy,
-      state: (ruleToDeploy as any).state || 'testing'
-    }
-
-    // Create the rule via API
-    await createRule(ruleWithState, 'testing')
-
-    // Close modal and refresh rules
-    showDeployConfirm.value = false
-    await fetchRules()
-
-    // Clear the generated rule and reset to create mode
-    generatedRule.value = null
-    createMode.value = 'manual'
-
-    // Navigate to rule validation page to see the deployed rule
-    router.push({
-      path: '/rule-validation',
-      query: {
-        rule: ruleToDeploy.name,
-        from: 'deploy'
-      }
-    })
-  } catch (error) {
-    console.error('Failed to deploy rule:', error)
-    alert(`Failed to deploy rule: ${error instanceof Error ? error.message : 'Unknown error'}`)
-  }
-}
-
-
-
-const route = useRoute()
-
-onMounted(async () => {
-  await fetchRules()
-  const qp = (route as any)?.query || {}
-  const ruleParam = typeof qp.rule === 'string' ? qp.rule : null
-  if (ruleParam) {
-    const match = rules.value.find(r => r.name === ruleParam)
-    if (match) {
-      selectedRule.value = match
-    }
-  }
-})
+const {
+  rules,
+  selectedRule,
+  generatedRule,
+  showDeployConfirm,
+  createMode,
+  loading,
+  searchQuery,
+  filterAction,
+  filteredRules,
+  stats,
+  fetchRules,
+  handleRuleSelect,
+  handleManualRuleCreated,
+  handleManualRuleUpdated,
+  handleEditCancel,
+  handleRuleDeleted,
+  handleConfirmDeploy
+} = usePolicyStudio()
 </script>
 
 <template>

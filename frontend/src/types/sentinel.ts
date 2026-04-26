@@ -1,23 +1,61 @@
-// Sentinel Types - Phase 4
-
-export type InsightType = 
-  | 'shadow_promotion' // legacy name for testing promotion
-  | 'testing_promotion' // new preferred name
+export type InsightType =
+  | 'testingPromotion'
   | 'anomaly'
   | 'optimization'
-  | 'daily_report'
+  | 'dailyReport'
 
-export type Severity = 
+export type InsightSeverity =
   | 'low'
   | 'medium'
   | 'high'
   | 'critical'
 
-export interface Action {
+export interface InsightAction {
   label: string
-  action_id: string
-  params: Record<string, any>
+  actionId: string
+  params: {
+    ruleName?: string
+    insightId?: string
+    page?: string
+    eventId?: string
+    contextType?: string
+  }
 }
+
+export interface TestingPromotionInsightData {
+  ruleName: string
+  hits: number
+  observationHours: number
+  falsePositives?: number
+}
+
+export interface AnomalyInsightData {
+  kind?: string
+  eventCount?: number
+  processId?: number
+  processName?: string
+  anomalyType: string
+  deviation: number
+}
+
+export interface OptimizationInsightData {
+  ruleNames: string[]
+  suggestion: string
+  ruleCount?: number
+}
+
+export interface DailyReportInsightData {
+  kind?: string
+  date: string
+  summary: string
+}
+
+export type InsightData =
+  | TestingPromotionInsightData
+  | AnomalyInsightData
+  | OptimizationInsightData
+  | DailyReportInsightData
+  | Record<string, string | number | boolean | string[] | undefined>
 
 export interface Insight {
   id: string
@@ -25,55 +63,8 @@ export interface Insight {
   title: string
   summary: string
   confidence: number
-  severity: Severity
-  data: Record<string, any>
-  actions: Action[]
-  created_at: string
+  severity: InsightSeverity
+  data: InsightData
+  actions: InsightAction[]
+  createdAt: string
 }
-
-export interface ShadowPromotionInsight extends Insight {
-  type: 'shadow_promotion'
-  data: {
-    rule_name: string
-    hits: number
-    observation_hours: number
-    false_positives?: number
-  }
-}
-
-export interface TestingPromotionInsight extends Insight {
-  type: 'testing_promotion'
-  data: {
-    rule_name: string
-    hits: number
-    observation_hours: number
-    false_positives?: number
-  }
-}
-
-export interface AnomalyInsight extends Insight {
-  type: 'anomaly'
-  data: {
-    process_id?: number
-    process_name?: string
-    anomaly_type: string
-    deviation: number
-  }
-}
-
-export interface OptimizationInsight extends Insight {
-  type: 'optimization'
-  data: {
-    rule_names: string[]
-    suggestion: string
-  }
-}
-
-export interface DailyReportInsight extends Insight {
-  type: 'daily_report'
-  data: {
-    date: string
-    summary: string
-  }
-}
-

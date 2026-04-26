@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { ChevronDown, ChevronRight, Terminal, Globe, FileText, Copy, Check, ShieldOff, AlertTriangle, ShieldCheck } from 'lucide-vue-next'
-import type { Rule } from '../../lib/api'
+import type { Rule } from '../../types/rules'
 
 const props = defineProps<{
   rule: Rule
@@ -30,7 +30,7 @@ const actionIcon = computed(() => {
 
 const matchEntries = computed(() => {
   if (!props.rule.match) return []
-  return Object.entries(props.rule.match).filter(([_, value]) => value)
+  return Object.entries(props.rule.match).filter(([_, value]) => value !== undefined && value !== '')
 })
 
 const copyYaml = async () => {

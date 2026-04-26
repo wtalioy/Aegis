@@ -2,45 +2,45 @@
 
 export type EventType = 'exec' | 'file' | 'connect'
 
-export interface EventHeader {
+export interface ExecEvent {
+  id: string
+  type: 'exec'
   timestamp: number
   pid: number
   ppid?: number
   cgroupId: string
-  uid?: number
-  gid?: number
-  comm: string
-}
-
-export interface ExecEvent {
-  id: string
-  type: 'exec'
-  header: EventHeader
+  processName: string
   parentComm: string
   filename: string
-  argv0?: string
-  blocked?: boolean
+  commandLine: string
+  blocked: boolean
 }
 
 export interface FileEvent {
   id: string
   type: 'file'
-  header: EventHeader
+  timestamp: number
+  pid: number
+  cgroupId: string
+  processName: string
   filename: string
   flags: number
   ino?: number
   dev?: number
-  blocked?: boolean
+  blocked: boolean
 }
 
 export interface ConnectEvent {
   id: string
   type: 'connect'
-  header: EventHeader
+  timestamp: number
+  pid: number
+  cgroupId: string
+  processName: string
   family: number
   port: number
   addr: string
-  blocked?: boolean
+  blocked: boolean
 }
 
 export type SecurityEvent = ExecEvent | FileEvent | ConnectEvent
@@ -73,10 +73,9 @@ export interface QueryResponse {
   page: number
   limit: number
   totalPages: number
-  type_counts?: {
+  typeCounts: {
     exec: number
     file: number
     connect: number
   }
 }
-

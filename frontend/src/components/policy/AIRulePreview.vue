@@ -2,17 +2,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { CheckCircle2, AlertTriangle, Target } from 'lucide-vue-next'
+import type { RuleGenResponse } from '../../types/ai'
 import AIConfidenceBadge from '../ai/AIConfidenceBadge.vue'
 
 const props = defineProps<{
-  rule: {
-    rule: any
-    yaml: string
-    reasoning: string
-    confidence: number
-    warnings?: string[]
-    simulation?: any
-  }
+  rule: RuleGenResponse
 }>()
 
 const emit = defineEmits<{

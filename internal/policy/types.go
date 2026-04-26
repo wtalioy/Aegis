@@ -51,15 +51,3 @@ type TestingRuleStatus struct {
 	Validation PromotionReadiness `json:"validation"`
 	Stats      TestingStats       `json:"stats"`
 }
-
-func CleanRuleForYAML(rule Rule) Rule {
-	return rules.CleanRuleForYAML(rule)
-}
-
-func NewEngine(ruleList []Rule) *Engine {
-	return rules.NewEngine(ruleList)
-}
-
-func ValidateRules(ruleList []Rule) []error {
-	return rules.ValidateRules(ruleList)
-}

@@ -2,9 +2,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Sparkles, AlertTriangle } from 'lucide-vue-next'
-import { useSentinel, type Insight } from '../composables/useSentinel'
+import { useSentinel } from '../composables/useSentinel'
 import { useOmnibox } from '../composables/useOmnibox'
 import InsightCard from '../components/sentinel/InsightCard.vue'
+import type { Insight } from '../types/sentinel'
 
 const { insights, loading, error, connected, executeAction } = useSentinel()
 const { openWithQuery } = useOmnibox()
@@ -15,7 +16,7 @@ const sortedInsights = computed(() => {
     const severityOrder = { critical: 4, high: 3, medium: 2, low: 1 }
     const severityDiff = (severityOrder[b.severity] || 0) - (severityOrder[a.severity] || 0)
     if (severityDiff !== 0) return severityDiff
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   })
 })
 

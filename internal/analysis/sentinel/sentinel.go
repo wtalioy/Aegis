@@ -25,10 +25,10 @@ type SentinelAIClient interface {
 type InsightType string
 
 const (
-	InsightTypeTestingPromotion InsightType = "testing_promotion"
+	InsightTypeTestingPromotion InsightType = "testingPromotion"
 	InsightTypeAnomaly          InsightType = "anomaly"
 	InsightTypeOptimization     InsightType = "optimization"
-	InsightTypeDailyReport      InsightType = "daily_report"
+	InsightTypeDailyReport      InsightType = "dailyReport"
 )
 
 type Severity string
@@ -42,15 +42,15 @@ const (
 
 // Insight represents a single Sentinel insight item.
 type Insight struct {
-	ID         string         `json:"id"`
-	Type       InsightType    `json:"type"`
-	Title      string         `json:"title"`
-	Summary    string         `json:"summary"`
-	Confidence float64        `json:"confidence"`
-	Severity   Severity       `json:"severity"`
-	Data       map[string]any `json:"data"`
-	Actions    []types.Action `json:"actions"`
-	CreatedAt  time.Time      `json:"created_at"`
+	ID         string            `json:"id"`
+	Type       InsightType       `json:"type"`
+	Title      string            `json:"title"`
+	Summary    string            `json:"summary"`
+	Confidence float64           `json:"confidence"`
+	Severity   Severity          `json:"severity"`
+	Data       types.InsightData `json:"data"`
+	Actions    []types.Action    `json:"actions"`
+	CreatedAt  time.Time         `json:"createdAt"`
 }
 
 type Sentinel struct {
@@ -117,26 +117,15 @@ func (s *Sentinel) Start() {
 
 func (s *Sentinel) generateWelcomeInsight() {
 	now := time.Now()
-	raw := insights.NewInsight(
-		now,
+	insight := newInsight(
 		insights.NewInsightID("welcome", now),
 		InsightTypeDailyReport,
 		"AI Sentinel Active",
 		"AI Sentinel is now monitoring your system. It will analyze security events, detect anomalies, and provide optimization suggestions. Insights will appear here as they are discovered.",
 		SeverityLow,
 	)
-	insight := &Insight{
-		ID:         raw.ID,
-		Type:       raw.Type.(InsightType),
-		Title:      raw.Title,
-		Summary:    raw.Summary,
-		Confidence: raw.Confidence,
-		Severity:   raw.Severity.(Severity),
-		Data:       raw.Data,
-		Actions:    raw.Actions,
-		CreatedAt:  raw.CreatedAt,
-	}
-	insight.Data["type"] = "welcome"
+	insight.CreatedAt = now
+	insight.Data.Kind = "welcome"
 	s.addInsights([]*Insight{insight})
 }
 
@@ -148,9 +137,6 @@ func (s *Sentinel) Stop() {
 func (s *Sentinel) Subscribe() insights.Subscription[*Insight] {
 	return s.insights.Subscribe(100)
 }
-
-// Unsubscribe is kept for API compatibility with older callers.
-// Prefer using the Subscription.Cancel() returned by Subscribe().
 
 func (s *Sentinel) GetInsights(limit int) []*Insight {
 	return s.insights.List(limit)
@@ -211,32 +197,21 @@ func (s *Sentinel) checkTestingPromotion(ctx context.Context) []*Insight {
 		if observationHours >= 1 && stats.Hits >= 5 {
 			now := time.Now()
 			id := fmt.Sprintf("testing-promotion-%s-%d", rule.Name, now.Unix())
-			raw := insights.NewInsight(
-				now,
+			insight := newInsight(
 				id,
 				InsightTypeTestingPromotion,
 				fmt.Sprintf("Testing Rule Ready for Promotion: %s", rule.Name),
 				fmt.Sprintf("Rule '%s' has been running in Testing mode for %.1f hours with %d hits. Consider promoting it to Production mode.", rule.Name, observationHours, stats.Hits),
 				SeverityMedium,
 			)
-			insight := &Insight{
-				ID:         raw.ID,
-				Type:       raw.Type.(InsightType),
-				Title:      raw.Title,
-				Summary:    raw.Summary,
-				Confidence: raw.Confidence,
-				Severity:   raw.Severity.(Severity),
-				Data:       raw.Data,
-				Actions:    raw.Actions,
-				CreatedAt:  raw.CreatedAt,
-			}
+			insight.CreatedAt = now
 			insight.Confidence = 0.8
-			insight.Data["rule_name"] = rule.Name
-			insight.Data["hits"] = stats.Hits
-			insight.Data["observation_hours"] = observationHours
+			insight.Data.RuleName = rule.Name
+			insight.Data.Hits = stats.Hits
+			insight.Data.ObservationHours = observationHours
 			insight.Actions = []types.Action{
-				{Label: "Promote to Production", ActionID: "promote", Params: map[string]any{"rule_name": rule.Name}},
-				{Label: "Dismiss", ActionID: "dismiss", Params: map[string]any{"insight_id": id}},
+				{Label: "Promote to Production", ActionID: "promote", Params: types.ActionParams{RuleName: rule.Name}},
+				{Label: "Dismiss", ActionID: "dismiss", Params: types.ActionParams{InsightID: id}},
 			}
 			out = append(out, insight)
 		}
@@ -255,51 +230,31 @@ func (s *Sentinel) checkAnomalies(ctx context.Context) []*Insight {
 	if err != nil || len(events) == 0 {
 		// No events, so we can create a "Normal" insight
 		now := time.Now()
-		raw := insights.NewInsight(
-			now,
+		insight := newInsight(
 			insights.NewInsightID("system-status-normal", now),
 			InsightTypeAnomaly,
 			"System Status: Normal",
 			"No notable security events detected in the last 15 minutes. System is operating as expected.",
 			SeverityLow,
 		)
-		insight := &Insight{
-			ID:         raw.ID,
-			Type:       raw.Type.(InsightType),
-			Title:      raw.Title,
-			Summary:    raw.Summary,
-			Confidence: 0.95,
-			Severity:   raw.Severity.(Severity),
-			Data:       raw.Data,
-			Actions:    raw.Actions,
-			CreatedAt:  raw.CreatedAt,
-		}
+		insight.CreatedAt = now
+		insight.Confidence = 0.95
 		return []*Insight{insight}
 	}
 
 	// If we have events, create a higher-severity insight
 	now := time.Now()
-	raw := insights.NewInsight(
-		now,
+	insight := newInsight(
 		insights.NewInsightID("suspicious-activity", now),
 		InsightTypeAnomaly,
 		"Suspicious Activity Detected",
 		fmt.Sprintf("Detected %d notable security events in the last 15 minutes that may require investigation.", len(events)),
 		SeverityMedium,
 	)
-	insight := &Insight{
-		ID:         raw.ID,
-		Type:       raw.Type.(InsightType),
-		Title:      raw.Title,
-		Summary:    raw.Summary,
-		Confidence: 0.8,
-		Severity:   raw.Severity.(Severity),
-		Data:       raw.Data,
-		Actions:    raw.Actions,
-		CreatedAt:  raw.CreatedAt,
-	}
-	insight.Data["event_count"] = len(events)
-	insight.Actions = []types.Action{{Label: "Investigate Events", ActionID: "navigate", Params: map[string]any{"page": "observatory"}}}
+	insight.CreatedAt = now
+	insight.Confidence = 0.8
+	insight.Data.EventCount = len(events)
+	insight.Actions = []types.Action{{Label: "Investigate Events", ActionID: "investigate", Params: types.ActionParams{Page: "observatory"}}}
 	return []*Insight{insight}
 }
 
@@ -314,27 +269,16 @@ func (s *Sentinel) checkRuleOptimization(ctx context.Context) []*Insight {
 	}
 
 	now := time.Now()
-	raw := insights.NewInsight(
-		now,
+	insight := newInsight(
 		insights.NewInsightID("optimization-no-rules", now),
 		InsightTypeOptimization,
 		"No Security Rules Detected",
 		"Your system currently has no active security rules. Consider creating rules to monitor and protect your system. You can use Policy Studio to create rules based on your security requirements.",
 		SeverityMedium,
 	)
-	insight := &Insight{
-		ID:         raw.ID,
-		Type:       raw.Type.(InsightType),
-		Title:      raw.Title,
-		Summary:    raw.Summary,
-		Confidence: raw.Confidence,
-		Severity:   raw.Severity.(Severity),
-		Data:       raw.Data,
-		Actions:    raw.Actions,
-		CreatedAt:  raw.CreatedAt,
-	}
-	insight.Actions = []types.Action{{Label: "Go to Policy Studio", ActionID: "navigate", Params: map[string]any{"page": "policy-studio"}}}
-	insight.Data["rule_count"] = 0
+	insight.CreatedAt = now
+	insight.Actions = []types.Action{{Label: "Go to Policy Studio", ActionID: "navigate", Params: types.ActionParams{Page: "policy-studio"}}}
+	insight.Data.RuleCount = 0
 	return []*Insight{insight}
 }
 
@@ -350,7 +294,7 @@ func (s *Sentinel) generateDailyReport(ctx context.Context) []*Insight {
 		insightSummary.WriteString("Here is a summary of recent activity to analyze:")
 		for _, insight := range recentInsights {
 			// Skip the welcome message and old daily reports
-			if insight.Data["type"] == "welcome" || insight.Type == InsightTypeDailyReport {
+			if insight.Data.Kind == "welcome" || insight.Type == InsightTypeDailyReport {
 				continue
 			}
 			insightSummary.WriteString(fmt.Sprintf("- At %s, this insight was generated: '%s' with summary: '%s'\n", insight.CreatedAt.Format(time.RFC1123), insight.Title, insight.Summary))
@@ -385,24 +329,27 @@ Format your response as a direct, professional report using markdown. Use header
 
 	now := time.Now()
 	id := fmt.Sprintf("daily-report-%d", now.Unix()/86400)
-	raw := insights.NewInsight(
-		now,
+	insight := newInsight(
 		id,
 		InsightTypeDailyReport,
 		"Daily Security Report",
 		summary,
 		SeverityLow,
 	)
-	insight := &Insight{
-		ID:         raw.ID,
-		Type:       raw.Type.(InsightType),
-		Title:      raw.Title,
-		Summary:    raw.Summary,
-		Confidence: 0.9,
-		Severity:   raw.Severity.(Severity),
-		Data:       raw.Data,
-		Actions:    raw.Actions,
-		CreatedAt:  raw.CreatedAt,
-	}
+	insight.CreatedAt = now
+	insight.Confidence = 0.9
 	return []*Insight{insight}
+}
+
+func newInsight(id string, typ InsightType, title, summary string, severity Severity) *Insight {
+	return &Insight{
+		ID:         id,
+		Type:       typ,
+		Title:      title,
+		Summary:    summary,
+		Confidence: 1,
+		Severity:   severity,
+		Data:       types.InsightData{},
+		Actions:    []types.Action{},
+	}
 }

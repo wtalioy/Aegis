@@ -17,7 +17,7 @@ const emit = defineEmits<{
 
 const searchQuery = ref('')
 const filterMode = ref<'all' | 'production' | 'testing' | 'draft'>('all')
-const filterAction = ref<'all' | 'block' | 'monitor' | 'allow'>('all')
+const filterAction = ref<'all' | 'block' | 'alert' | 'allow'>('all')
 
 const filteredRules = computed(() => {
   let result = props.rules
@@ -31,7 +31,7 @@ const filteredRules = computed(() => {
   }
 
   if (filterMode.value !== 'all') {
-    result = result.filter(r => (r as any).state === filterMode.value)
+    result = result.filter(r => r.state === filterMode.value)
   }
 
   if (filterAction.value !== 'all') {
@@ -44,9 +44,9 @@ const filteredRules = computed(() => {
 const ruleCounts = computed(() => {
   return {
     total: props.rules.length,
-    production: props.rules.filter(r => (r as any).state === 'production').length,
-    testing: props.rules.filter(r => (r as any).state === 'testing').length,
-    draft: props.rules.filter(r => (r as any).state === 'draft').length
+    production: props.rules.filter(r => r.state === 'production').length,
+    testing: props.rules.filter(r => r.state === 'testing').length,
+    draft: props.rules.filter(r => r.state === 'draft').length
   }
 })
 </script>
@@ -91,7 +91,7 @@ const ruleCounts = computed(() => {
         <div class="rule-header">
           <div class="rule-name">{{ rule.name }}</div>
           <div class="rule-badges">
-            <span class="mode-badge" :class="(rule as any).state">{{ (rule as any).state }}</span>
+            <span class="mode-badge" :class="rule.state">{{ rule.state }}</span>
             <span class="action-badge" :class="rule.action">{{ rule.action }}</span>
           </div>
         </div>
@@ -99,7 +99,7 @@ const ruleCounts = computed(() => {
         <div class="rule-footer">
           <span class="rule-severity">{{ rule.severity }}</span>
           <button
-            v-if="(rule as any).state === 'testing'"
+            v-if="rule.state === 'testing'"
             class="promote-btn"
             @click.stop="$emit('promote', rule)"
           >
@@ -313,4 +313,3 @@ const ruleCounts = computed(() => {
   color: var(--text-muted);
 }
 </style>
-

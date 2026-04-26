@@ -1,7 +1,8 @@
 <!-- Insights Feed Component - Phase 4 -->
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useSentinel, type Insight } from '../../composables/useSentinel'
+import { useSentinel } from '../../composables/useSentinel'
+import type { Insight, InsightType } from '../../types/sentinel'
 import InsightCard from './InsightCard.vue'
 import DeepAskAI from './DeepAskAI.vue'
 
@@ -11,11 +12,11 @@ const selectedInsightForAI = ref<Insight | null>(null)
 const { insights, loading, error, executeAction } = useSentinel()
 
 const groupedInsights = computed(() => {
-  const groups: Record<string, Insight[]> = {
-    testing_promotion: [],
+  const groups: Record<InsightType, Insight[]> = {
+    testingPromotion: [],
     anomaly: [],
     optimization: [],
-    daily_report: []
+    dailyReport: []
   }
 
   insights.value.forEach(insight => {
@@ -54,7 +55,7 @@ const handleAskAI = (insight: Insight) => {
     <div v-else class="insights-groups">
       <template v-for="(group, type) in groupedInsights" :key="type">
         <div v-if="group.length > 0" class="insight-group">
-          <h3 class="group-title">{{ type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) }}</h3>
+          <h3 class="group-title">{{ type.replace(/([A-Z])/g, ' $1').replace(/\b\w/g, l => l.toUpperCase()) }}</h3>
           <div class="group-items">
             <InsightCard
               v-for="insight in group"
@@ -125,4 +126,3 @@ const handleAskAI = (insight: Insight) => {
   gap: 16px;
 }
 </style>
-

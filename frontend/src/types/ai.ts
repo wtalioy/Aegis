@@ -1,31 +1,61 @@
-// AI Types
+import type { Rule } from './rules'
+import type { Insight } from './sentinel'
 
 export interface RuleGenRequest {
   description: string
-  examples?: any[]
+  context?: {
+    currentPage?: string
+    selectedItem?: string
+    recentActions?: string[]
+  }
+  examples?: Rule[]
 }
 
 export interface RuleGenResponse {
-  rule: any
+  rule: Rule
   yaml: string
   reasoning: string
   confidence: number
   warnings: string[]
-  simulation?: any
 }
 
 export interface ExplainRequest {
-  eventId?: string
-  eventData?: any
+  eventId: string
   question?: string
+}
+
+export interface ActionParams {
+  ruleName?: string
+  insightId?: string
+  page?: string
+  eventId?: string
+  contextType?: string
+}
+
+export interface Action {
+  label: string
+  actionId: string
+  params: ActionParams
+}
+
+export interface RelatedEvent {
+  type: string
+  timestamp: number
+  pid?: number
+  ppid?: number
+  cgroupId?: string
+  processName?: string
+  filename?: string
+  port?: number
+  blocked: boolean
 }
 
 export interface ExplainResponse {
   explanation: string
   rootCause: string
-  matchedRule?: any
-  relatedEvents?: any[]
-  suggestedActions?: any[]
+  matchedRule?: Rule
+  relatedEvents?: RelatedEvent[]
+  suggestedActions?: Action[]
 }
 
 export interface AnalyzeRequest {
@@ -33,11 +63,41 @@ export interface AnalyzeRequest {
   id: string
 }
 
-export interface AnalyzeResponse {
-  summary: string
-  anomalies: any[]
-  baselineStatus: string
-  recommendations: any[]
-  relatedInsights: any[]
+export interface Anomaly {
+  type: string
+  description: string
+  severity: string
+  confidence: number
+  evidence: string[]
 }
 
+export interface Recommendation {
+  type: string
+  description: string
+  priority: string
+  action: Action
+}
+
+export interface RelatedInsight {
+  type: string
+  title: string
+  summary: string
+}
+
+export interface AnalyzeResponse {
+  summary: string
+  anomalies: Anomaly[]
+  baselineStatus: string
+  recommendations: Recommendation[]
+  relatedInsights: RelatedInsight[]
+}
+
+export interface AskInsightRequest {
+  insight: Insight
+  question: string
+}
+
+export interface AskInsightResponse {
+  answer: string
+  confidence: number
+}

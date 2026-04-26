@@ -2,13 +2,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Sparkles, CheckCircle2 } from 'lucide-vue-next'
+import type { QueryRequest } from '../../types/events'
 
 const props = defineProps<{
   naturalLanguage: string
-  translatedQuery?: {
-    filter?: any
-    semantic?: string
-  }
+  translatedQuery?: QueryRequest
 }>()
 
 const querySummary = computed(() => {
@@ -147,4 +145,3 @@ const querySummary = computed(() => {
   transform: translateY(-4px);
 }
 </style>
-

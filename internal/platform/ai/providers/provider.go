@@ -23,3 +23,9 @@ type Provider interface {
 	MultiChat(ctx context.Context, messages []types.Message) (string, error)
 	MultiChatStream(ctx context.Context, messages []types.Message) (<-chan StreamToken, error)
 }
+
+const (
+	defaultChatTemperature   = 0.4
+	defaultPromptTemperature = 0.3
+	defaultMaxTokens         = 2048
+)

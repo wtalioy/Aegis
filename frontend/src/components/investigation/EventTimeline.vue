@@ -15,7 +15,7 @@ const emit = defineEmits<{
 
 const sortedEvents = computed(() => {
   return [...props.events].sort((a, b) =>
-    (b.header?.timestamp || 0) - (a.header?.timestamp || 0)
+    (b.timestamp || 0) - (a.timestamp || 0)
   )
 })
 
@@ -52,12 +52,12 @@ const eventTypeColor = (type: string) => {
         <div class="marker" :style="{ background: eventTypeColor(event.type), boxShadow: `0 0 0 2px var(--bg-surface)` }"></div>
         <div class="timeline-content">
           <div class="top-row">
-            <div class="process" :title="event.header?.comm">{{ event.header?.comm || 'Unknown' }}</div>
-            <div class="time">{{ event.header?.timestamp ? formatTime(event.header.timestamp) : 'Unknown' }}</div>
+            <div class="process" :title="event.processName">{{ event.processName || 'Unknown' }}</div>
+            <div class="time">{{ event.timestamp ? formatTime(event.timestamp) : 'Unknown' }}</div>
           </div>
           <div class="bottom-row">
             <span class="type-badge" :data-type="event.type">{{ event.type }}</span>
-            <span v-if="event.header?.pid" class="pid">PID: {{ event.header.pid }}</span>
+            <span v-if="event.pid" class="pid">PID: {{ event.pid }}</span>
           </div>
         </div>
       </div>

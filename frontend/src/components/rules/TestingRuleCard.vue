@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { Activity, AlertTriangle, Clock } from 'lucide-vue-next'
-import type { Rule } from '../../types/rules'
+import type { TestingRule } from '../../types/rules'
 
 defineProps<{
-  rule: Rule
+  rule: TestingRule
   selected?: boolean
 }>()
 
@@ -23,13 +23,13 @@ defineEmits<{
       <div class="stat">
         <Activity :size="14" />
         <span class="stat-label">Hits</span>
-        <span class="stat-value">{{ (rule as any).actual_testing_hits || 0 }}</span>
+        <span class="stat-value">{{ rule.stats.hits || 0 }}</span>
       </div>
       <div class="stat">
         <Clock :size="14" />
         <span class="stat-label">Observed</span>
         <span class="stat-value">{{ (() => {
-          const minutes = (rule as any).observationMinutes || ((rule as any).observationHours ? Math.round((rule as any).observationHours * 60) : 0) || 0
+          const minutes = rule.stats.observationMinutes || 0
           if (minutes < 60) return `${minutes}min`
           return `${(minutes / 60).toFixed(1)}h`
         })() }}</span>
@@ -37,7 +37,7 @@ defineEmits<{
     </div>
 
     <div class="readiness-bar">
-      <div class="bar-fill" :style="{ width: `${(((rule as any).promotion_score || (rule as any).promotionScore || 0) * 100)}%` }"></div>
+      <div class="bar-fill" :style="{ width: `${((rule.validation.score || 0) * 100)}%` }"></div>
     </div>
   </div>
 </template>
@@ -141,4 +141,3 @@ defineEmits<{
   transition: width 0.3s;
 }
 </style>
-

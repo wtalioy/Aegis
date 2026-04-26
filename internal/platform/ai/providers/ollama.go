@@ -1,8 +1,6 @@
 package providers
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +10,42 @@ import (
 	"aegis/internal/analysis/types"
 	"aegis/internal/platform/config"
 )
+
+type ollamaOptions struct {
+	Temperature float64 `json:"temperature"`
+	NumPredict  int     `json:"num_predict"`
+}
+
+type ollamaGenerateRequest struct {
+	Model   string        `json:"model"`
+	Prompt  string        `json:"prompt"`
+	Stream  bool          `json:"stream"`
+	Options ollamaOptions `json:"options"`
+}
+
+type ollamaChatRequest struct {
+	Model    string              `json:"model"`
+	Messages []map[string]string `json:"messages"`
+	Stream   bool                `json:"stream"`
+	Options  ollamaOptions       `json:"options"`
+}
+
+type ollamaGenerateResponse struct {
+	Response string `json:"response"`
+}
+
+type ollamaChatResponse struct {
+	Message struct {
+		Content string `json:"content"`
+	} `json:"message"`
+}
+
+type ollamaStreamChunk struct {
+	Message struct {
+		Content string `json:"content"`
+	} `json:"message"`
+	Done bool `json:"done"`
+}
 
 type OllamaProvider struct {
 	endpoint     string
@@ -35,23 +69,18 @@ func (o *OllamaProvider) Name() string  { return "Ollama" }
 func (o *OllamaProvider) IsLocal() bool { return true }
 
 func (o *OllamaProvider) SingleChat(ctx context.Context, prompt string) (string, error) {
-	reqBody := map[string]any{
-		"model":  o.model,
-		"prompt": prompt,
-		"stream": false,
-		"options": map[string]any{
-			"temperature": 0.3,
-			"num_predict": 2048,
+	req, err := newJSONRequest(ctx, http.MethodPost, o.endpoint+"/api/generate", ollamaGenerateRequest{
+		Model:  o.model,
+		Prompt: prompt,
+		Stream: false,
+		Options: ollamaOptions{
+			Temperature: defaultPromptTemperature,
+			NumPredict:  defaultMaxTokens,
 		},
-	}
-
-	body, _ := json.Marshal(reqBody)
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		o.endpoint+"/api/generate", bytes.NewReader(body))
+	})
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := o.client.Do(req)
 	if err != nil {
@@ -59,13 +88,11 @@ func (o *OllamaProvider) SingleChat(ctx context.Context, prompt string) (string,
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("ollama returned status %d", resp.StatusCode)
+		return "", unexpectedStatus("ollama", resp.StatusCode)
 	}
 
-	var result struct {
-		Response string `json:"response"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var result ollamaGenerateResponse
+	if err := decodeJSONResponse(resp, &result); err != nil {
 		return "", err
 	}
 
@@ -73,25 +100,18 @@ func (o *OllamaProvider) SingleChat(ctx context.Context, prompt string) (string,
 }
 
 func (o *OllamaProvider) MultiChat(ctx context.Context, messages []types.Message) (string, error) {
-	ollamaMessages := ToRoleContent(messages)
-
-	reqBody := map[string]any{
-		"model":    o.model,
-		"messages": ollamaMessages,
-		"stream":   false,
-		"options": map[string]any{
-			"temperature": 0.4,
-			"num_predict": 2048,
+	req, err := newJSONRequest(ctx, http.MethodPost, o.endpoint+"/api/chat", ollamaChatRequest{
+		Model:    o.model,
+		Messages: ToRoleContent(messages),
+		Stream:   false,
+		Options: ollamaOptions{
+			Temperature: defaultChatTemperature,
+			NumPredict:  defaultMaxTokens,
 		},
-	}
-
-	body, _ := json.Marshal(reqBody)
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		o.endpoint+"/api/chat", bytes.NewReader(body))
+	})
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := o.client.Do(req)
 	if err != nil {
@@ -99,15 +119,11 @@ func (o *OllamaProvider) MultiChat(ctx context.Context, messages []types.Message
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("ollama returned status %d", resp.StatusCode)
+		return "", unexpectedStatus("ollama", resp.StatusCode)
 	}
 
-	var result struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var result ollamaChatResponse
+	if err := decodeJSONResponse(resp, &result); err != nil {
 		return "", err
 	}
 
@@ -115,25 +131,18 @@ func (o *OllamaProvider) MultiChat(ctx context.Context, messages []types.Message
 }
 
 func (o *OllamaProvider) MultiChatStream(ctx context.Context, messages []types.Message) (<-chan StreamToken, error) {
-	ollamaMessages := ToRoleContent(messages)
-
-	reqBody := map[string]any{
-		"model":    o.model,
-		"messages": ollamaMessages,
-		"stream":   true,
-		"options": map[string]any{
-			"temperature": 0.4,
-			"num_predict": 2048,
+	req, err := newJSONRequest(ctx, http.MethodPost, o.endpoint+"/api/chat", ollamaChatRequest{
+		Model:    o.model,
+		Messages: ToRoleContent(messages),
+		Stream:   true,
+		Options: ollamaOptions{
+			Temperature: defaultChatTemperature,
+			NumPredict:  defaultMaxTokens,
 		},
-	}
-
-	body, _ := json.Marshal(reqBody)
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		o.endpoint+"/api/chat", bytes.NewReader(body))
+	})
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := o.streamClient.Do(req)
 	if err != nil {
@@ -141,7 +150,7 @@ func (o *OllamaProvider) MultiChatStream(ctx context.Context, messages []types.M
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
+		return nil, unexpectedStatus("ollama", resp.StatusCode)
 	}
 
 	tokenChan := make(chan StreamToken, 100)
@@ -151,10 +160,7 @@ func (o *OllamaProvider) MultiChatStream(ctx context.Context, messages []types.M
 		defer close(tokenChan)
 		defer resp.Body.Close()
 
-		scanner := bufio.NewScanner(resp.Body)
-		// Increase buffer size for long lines.
-		buf := make([]byte, 64*1024)
-		scanner.Buffer(buf, 1024*1024)
+		scanner := newStreamScanner(resp)
 
 		for scanner.Scan() {
 			select {
@@ -169,13 +175,7 @@ func (o *OllamaProvider) MultiChatStream(ctx context.Context, messages []types.M
 				continue
 			}
 
-			var chunk struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-				Done bool `json:"done"`
-			}
-
+			var chunk ollamaStreamChunk
 			if err := json.Unmarshal(line, &chunk); err != nil {
 				tokenChan <- StreamToken{Error: fmt.Errorf("failed to parse chunk: %w", err)}
 				return
@@ -207,7 +207,7 @@ func (o *OllamaProvider) CheckHealth(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("ollama returned status %d", resp.StatusCode)
+		return unexpectedStatus("ollama", resp.StatusCode)
 	}
 	return nil
 }

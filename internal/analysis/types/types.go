@@ -2,6 +2,7 @@ package types
 
 import (
 	"aegis/internal/policy"
+	"time"
 )
 
 type Message struct {
@@ -73,39 +74,48 @@ type RelatedInsight struct {
 type AnalyzeResponse struct {
 	Summary         string           `json:"summary"`
 	Anomalies       []Anomaly        `json:"anomalies"`
-	BaselineStatus  string           `json:"baseline_status"`
+	BaselineStatus  string           `json:"baselineStatus"`
 	Recommendations []Recommendation `json:"recommendations"`
-	RelatedInsights []RelatedInsight `json:"related_insights"`
+	RelatedInsights []RelatedInsight `json:"relatedInsights"`
 }
 
 type ExplainRequest struct {
-	EventID   string         `json:"event_id"`
-	EventData map[string]any `json:"event_data,omitempty"`
-	Question  string         `json:"question"`
+	EventID  string `json:"eventId"`
+	Question string `json:"question"`
+}
+
+type ActionParams struct {
+	RuleName    string `json:"ruleName,omitempty"`
+	InsightID   string `json:"insightId,omitempty"`
+	Page        string `json:"page,omitempty"`
+	EventID     string `json:"eventId,omitempty"`
+	ContextType string `json:"contextType,omitempty"`
 }
 
 type Action struct {
-	Label    string         `json:"label"`
-	ActionID string         `json:"action_id"`
-	Params   map[string]any `json:"params"`
+	Label    string       `json:"label"`
+	ActionID string       `json:"actionId"`
+	Params   ActionParams `json:"params"`
 }
 
 type RelatedEvent struct {
-	Type        string         `json:"type"`
-	Timestamp   int64          `json:"timestamp"`
-	PID         uint32         `json:"pid,omitempty"`
-	CgroupID    string         `json:"cgroup_id,omitempty"`
-	ProcessName string         `json:"process_name,omitempty"`
-	Blocked     bool           `json:"blocked"`
-	Details     map[string]any `json:"details,omitempty"`
+	Type        string `json:"type"`
+	Timestamp   int64  `json:"timestamp"`
+	PID         uint32 `json:"pid,omitempty"`
+	PPID        uint32 `json:"ppid,omitempty"`
+	CgroupID    string `json:"cgroupId,omitempty"`
+	ProcessName string `json:"processName,omitempty"`
+	Filename    string `json:"filename,omitempty"`
+	Port        uint16 `json:"port,omitempty"`
+	Blocked     bool   `json:"blocked"`
 }
 
 type ExplainResponse struct {
 	Explanation      string         `json:"explanation"`
-	RootCause        string         `json:"root_cause"`
-	MatchedRule      *policy.Rule   `json:"matched_rule"`
-	RelatedEvents    []RelatedEvent `json:"related_events"`
-	SuggestedActions []Action       `json:"suggested_actions"`
+	RootCause        string         `json:"rootCause"`
+	MatchedRule      *policy.Rule   `json:"matchedRule"`
+	RelatedEvents    []RelatedEvent `json:"relatedEvents"`
+	SuggestedActions []Action       `json:"suggestedActions"`
 }
 
 type RuleGenRequest struct {
@@ -127,16 +137,27 @@ type StatusDTO struct {
 	Status   string `json:"status"` // "ready", "unavailable"
 }
 
+type InsightData struct {
+	Kind             string  `json:"kind,omitempty"`
+	RuleName         string  `json:"ruleName,omitempty"`
+	Hits             int     `json:"hits,omitempty"`
+	ObservationHours float64 `json:"observationHours,omitempty"`
+	EventCount       int     `json:"eventCount,omitempty"`
+	RuleCount        int     `json:"ruleCount,omitempty"`
+	Date             string  `json:"date,omitempty"`
+	Summary          string  `json:"summary,omitempty"`
+}
+
 type Insight struct {
-	ID         string         `json:"id"`
-	Type       string         `json:"type"`
-	Title      string         `json:"title"`
-	Summary    string         `json:"summary"`
-	Severity   string         `json:"severity"`
-	Confidence float64        `json:"confidence"`
-	CreatedAt  any            `json:"created_at"`
-	Actions    []Action       `json:"actions"`
-	Data       map[string]any `json:"data"`
+	ID         string      `json:"id"`
+	Type       string      `json:"type"`
+	Title      string      `json:"title"`
+	Summary    string      `json:"summary"`
+	Severity   string      `json:"severity"`
+	Confidence float64     `json:"confidence"`
+	CreatedAt  time.Time   `json:"createdAt"`
+	Actions    []Action    `json:"actions"`
+	Data       InsightData `json:"data"`
 }
 
 type AskInsightRequest struct {
@@ -145,7 +166,6 @@ type AskInsightRequest struct {
 }
 
 type AskInsightResponse struct {
-	Answer      string  `json:"answer"`
-	Confidence  float64 `json:"confidence"`
-	RelatedData any     `json:"related_data,omitempty"`
+	Answer     string  `json:"answer"`
+	Confidence float64 `json:"confidence"`
 }

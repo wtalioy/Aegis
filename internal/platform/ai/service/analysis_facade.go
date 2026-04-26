@@ -5,7 +5,6 @@ import (
 
 	"aegis/internal/analysis/types"
 	"aegis/internal/platform/ai/analysis"
-	"aegis/internal/platform/ai/snapshot"
 	"aegis/internal/platform/storage"
 	"aegis/internal/policy"
 	"aegis/internal/shared/metrics"
@@ -24,14 +23,16 @@ func (s *Service) Analyze(
 	store storage.EventStore,
 	processTree *proc.ProcessTree,
 ) (*types.AnalyzeResponse, error) {
-	// Build snapshot state for context
-	var snapshotState *snapshot.SystemState
-	if statsProvider != nil && workloadReg != nil && store != nil {
-		snap := snapshot.NewSnapshot(statsProvider, workloadReg, store, processTree)
-		result := snap.BuildWithoutAncestors() // Don't need ancestors for analysis
-		snapshotState = &result.State
+	provider, err := s.requireProvider()
+	if err != nil {
+		return nil, err
 	}
-	return analysis.Analyze(ctx, s.provider, req, profileReg, workloadReg, ruleEngine, snapshotState)
+	return analysis.Analyze(ctx, provider, req, profileReg, workloadReg, ruleEngine, s.snapshotState(runtimeDeps{
+		statsProvider: statsProvider,
+		workloadReg:   workloadReg,
+		store:         store,
+		processTree:   processTree,
+	}))
 }
 
 // ExplainEvent delegates to the analysis subpackage.
@@ -46,17 +47,23 @@ func (s *Service) ExplainEvent(
 	processTree *proc.ProcessTree,
 	statsProvider metrics.StatsProvider,
 ) (*types.ExplainResponse, error) {
-	// Build snapshot state for context
-	var snapshotState *snapshot.SystemState
-	if statsProvider != nil && workloadReg != nil && store != nil {
-		snap := snapshot.NewSnapshot(statsProvider, workloadReg, store, processTree)
-		result := snap.BuildWithoutAncestors() // Ancestors built on-demand in BuildExplainContext
-		snapshotState = &result.State
+	provider, err := s.requireProvider()
+	if err != nil {
+		return nil, err
 	}
-	return analysis.ExplainEvent(ctx, s.provider, req, event, ruleEngine, store, profileReg, workloadReg, processTree, snapshotState)
+	return analysis.ExplainEvent(ctx, provider, req, event, ruleEngine, store, profileReg, workloadReg, processTree, s.snapshotState(runtimeDeps{
+		statsProvider: statsProvider,
+		workloadReg:   workloadReg,
+		store:         store,
+		processTree:   processTree,
+	}))
 }
 
 // GenerateRule delegates to the analysis subpackage.
 func (s *Service) GenerateRule(ctx context.Context, req *types.RuleGenRequest, ruleEngine *policy.Engine, store storage.EventStore) (*types.RuleGenResponse, error) {
-	return analysis.GenerateRule(ctx, s.provider, req, ruleEngine, store)
+	provider, err := s.requireProvider()
+	if err != nil {
+		return nil, err
+	}
+	return analysis.GenerateRule(ctx, provider, req, ruleEngine, store)
 }
