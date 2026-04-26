@@ -11,7 +11,7 @@ import (
 	"aegis/tests/helpers"
 )
 
-func TestInodeMatchingWithHardlink(t *testing.T) {
+func TestFileMatcher_MatchesHardlinksByInode(t *testing.T) {
 	dir := t.TempDir()
 	original := filepath.Join(dir, "sensitive.txt")
 	alias := filepath.Join(dir, "alias.txt")
@@ -48,7 +48,7 @@ func TestInodeMatchingWithHardlink(t *testing.T) {
 	}
 }
 
-func TestFileRuleFallsBackToPathWhenInodeMissing(t *testing.T) {
+func TestFileMatcher_FallsBackToPathWhenInodeIsMissing(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "nonexistent.txt")
 
@@ -68,7 +68,7 @@ func TestFileRuleFallsBackToPathWhenInodeMissing(t *testing.T) {
 	}
 }
 
-func TestRelativePathRuleMatches(t *testing.T) {
+func TestFileMatcher_MatchesRelativePaths(t *testing.T) {
 	engine := rules.NewEngine([]policy.Rule{
 		helpers.ActiveFileRule("Docs file alert", "docs/readme.md", policy.ActionAlert),
 	})
@@ -79,7 +79,7 @@ func TestRelativePathRuleMatches(t *testing.T) {
 	}
 }
 
-func TestWildcardFilenameMatchesCanonicalForms(t *testing.T) {
+func TestFileMatcher_MatchesWildcardRulesAgainstRelativeAndCanonicalForms(t *testing.T) {
 	engine := rules.NewEngine([]policy.Rule{
 		helpers.ActiveFileRule("Monitor log dir", "/var/log/*", policy.ActionAlert),
 	})

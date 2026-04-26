@@ -39,12 +39,12 @@ function mountCreator(props?: Record<string, unknown>) {
   })
 }
 
-describe('ManualRuleCreator', () => {
+describe('component/ManualRuleCreator', () => {
   beforeEach(() => {
     vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
-  it('enforces required fields per match type', async () => {
+  it('requires the match-specific fields needed to enable rule creation', async () => {
     const wrapper = mountCreator()
     const actionButton = wrapper.get('button.btn-primary')
 
@@ -63,7 +63,7 @@ describe('ManualRuleCreator', () => {
     expect(actionButton.attributes('disabled')).toBeUndefined()
   })
 
-  it('emits created rules with the built match object and YAML', async () => {
+  it('emits created rules with the built match object and generated YAML', async () => {
     const wrapper = mountCreator()
 
     await wrapper.get('input[placeholder="e.g., Block Suspicious Process"]').setValue('Watch File')

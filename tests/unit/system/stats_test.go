@@ -7,7 +7,7 @@ import (
 	"aegis/internal/system"
 )
 
-func TestStatsDeduplicatesAlertsWithinWindow(t *testing.T) {
+func TestStats_AddAlertDeduplicatesWithinWindow(t *testing.T) {
 	stats := system.NewStats(10, time.Minute)
 
 	alert := system.Alert{

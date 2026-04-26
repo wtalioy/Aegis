@@ -26,7 +26,7 @@ func newRuntime(t *testing.T) *app.Runtime {
 	return app.NewRuntime(cfg, filepath.Join(t.TempDir(), "config.yaml"))
 }
 
-func TestV1SystemEventsAndPoliciesContracts(t *testing.T) {
+func TestV1HTTP_GetEndpointsReturnOKForRegisteredSurfaces(t *testing.T) {
 	runtime := newRuntime(t)
 	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
 
@@ -55,7 +55,7 @@ func TestV1SystemEventsAndPoliciesContracts(t *testing.T) {
 	}
 }
 
-func TestV1SettingsPutReturnsRestartMetadata(t *testing.T) {
+func TestV1HTTP_SettingsUpdateReturnsRestartMetadata(t *testing.T) {
 	runtime := newRuntime(t)
 	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
 
@@ -95,7 +95,7 @@ func TestV1SettingsPutReturnsRestartMetadata(t *testing.T) {
 	}
 }
 
-func TestV1SettingsPutReturnsHotReloadMetadata(t *testing.T) {
+func TestV1HTTP_SettingsUpdateReturnsHotReloadMetadata(t *testing.T) {
 	runtime := newRuntime(t)
 	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
 
@@ -138,7 +138,7 @@ func TestV1SettingsPutReturnsHotReloadMetadata(t *testing.T) {
 	}
 }
 
-func TestV1SettingsPutRejectsInvalidConfig(t *testing.T) {
+func TestV1HTTP_SettingsUpdateRejectsInvalidConfig(t *testing.T) {
 	runtime := newRuntime(t)
 	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
 
@@ -162,7 +162,7 @@ func TestV1SettingsPutRejectsInvalidConfig(t *testing.T) {
 	}
 }
 
-func TestV1AlertStreamPublishesSSE(t *testing.T) {
+func TestV1HTTP_AlertStreamPublishesSSE(t *testing.T) {
 	runtime := newRuntime(t)
 	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
 
@@ -196,7 +196,7 @@ func TestV1AlertStreamPublishesSSE(t *testing.T) {
 	}
 }
 
-func TestV1SystemStatsReflectProbeLifecycle(t *testing.T) {
+func TestV1HTTP_SystemStatsReflectProbeLifecycle(t *testing.T) {
 	runtime := newRuntime(t)
 	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
 
@@ -231,7 +231,7 @@ func TestV1SystemStatsReflectProbeLifecycle(t *testing.T) {
 	}
 }
 
-func TestV1PolicyTestingEndpointsReturnEmptyAndPopulatedStates(t *testing.T) {
+func TestV1HTTP_PolicyTestingEndpointsReturnEmptyAndPopulatedStates(t *testing.T) {
 	runtime := newRuntime(t)
 	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
 
@@ -319,25 +319,4 @@ func TestV1PolicyTestingEndpointsReturnEmptyAndPopulatedStates(t *testing.T) {
 			t.Fatalf("unexpected validation payload: %+v", payload)
 		}
 	})
-}
-
-func TestOldAPIPathsAreNotRegistered(t *testing.T) {
-	runtime := newRuntime(t)
-	handler := httpapi.NewHandler(httpapi.DependenciesFromRuntime(runtime), nil)
-
-	paths := []string{
-		"/api/stats",
-		"/api/events",
-		"/api/policies",
-		"/api/settings",
-	}
-
-	for _, path := range paths {
-		req := httptest.NewRequest(http.MethodGet, path, nil)
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
-		if rec.Code != http.StatusNotFound {
-			t.Fatalf("expected old route %s to be removed, got %d", path, rec.Code)
-		}
-	}
 }

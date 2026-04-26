@@ -118,7 +118,7 @@ const Harness = defineComponent({
   template: '<div />'
 })
 
-describe('useInvestigationPage', () => {
+describe('composable/useInvestigationPage', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     searchEvents.mockReset().mockResolvedValue(null)
@@ -135,7 +135,7 @@ describe('useInvestigationPage', () => {
     }
   })
 
-  it('loads events on mount and seeds the search query from the route', async () => {
+  it('loads the initial event page on mount and seeds the search query from the route', async () => {
     routeQuery.value = { search: 'curl' }
 
     const wrapper = mount(Harness)

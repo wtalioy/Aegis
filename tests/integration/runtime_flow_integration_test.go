@@ -12,7 +12,7 @@ import (
 	"aegis/tests/helpers"
 )
 
-func TestRuntimeIngestPipelinePublishesEventsAndAlerts(t *testing.T) {
+func TestRuntimeFlow_IngestPipelinePublishesEventsAndAlerts(t *testing.T) {
 	cfg := internalconfig.Default(t.TempDir())
 	cfg.Analysis.Mode = "disabled"
 	cfg.Policy.RulesPath = filepath.Join(t.TempDir(), "rules.yaml")
@@ -65,7 +65,7 @@ func TestRuntimeIngestPipelinePublishesEventsAndAlerts(t *testing.T) {
 	}
 }
 
-func TestSettingsServiceRejectsInvalidConfig(t *testing.T) {
+func TestRuntimeSettings_RejectInvalidConfigUpdates(t *testing.T) {
 	cfg := internalconfig.Default(t.TempDir())
 	runtime := app.NewRuntime(cfg, filepath.Join(t.TempDir(), "config.yaml"))
 
@@ -77,7 +77,7 @@ func TestSettingsServiceRejectsInvalidConfig(t *testing.T) {
 	}
 }
 
-func TestSettingsServiceHotReloadsPolicyThresholds(t *testing.T) {
+func TestRuntimeSettings_HotReloadPolicyThresholdsWithoutRestart(t *testing.T) {
 	cfg := internalconfig.Default(t.TempDir())
 	cfg.Analysis.Mode = "disabled"
 	cfg.Policy.RulesPath = filepath.Join(t.TempDir(), "rules.yaml")
@@ -136,7 +136,7 @@ func TestSettingsServiceHotReloadsPolicyThresholds(t *testing.T) {
 	}
 }
 
-func TestRuntimeIngestPipelineAllowsExecRuleWithoutAlert(t *testing.T) {
+func TestRuntimeFlow_IngestPipelineAllowsExecRulesWithoutAlerts(t *testing.T) {
 	cfg := internalconfig.Default(t.TempDir())
 	cfg.Analysis.Mode = "disabled"
 	cfg.Policy.RulesPath = filepath.Join(t.TempDir(), "rules.yaml")
@@ -176,7 +176,7 @@ func TestRuntimeIngestPipelineAllowsExecRuleWithoutAlert(t *testing.T) {
 	}
 }
 
-func TestRuntimeIngestPipelineCreatesSyntheticKernelBlockAlerts(t *testing.T) {
+func TestRuntimeFlow_IngestPipelineCreatesSyntheticKernelBlockAlerts(t *testing.T) {
 	cfg := internalconfig.Default(t.TempDir())
 	cfg.Analysis.Mode = "disabled"
 	cfg.Policy.RulesPath = filepath.Join(t.TempDir(), "rules.yaml")
@@ -217,7 +217,7 @@ func TestRuntimeIngestPipelineCreatesSyntheticKernelBlockAlerts(t *testing.T) {
 	}
 }
 
-func TestRuntimeTelemetryQueryRemainsStableAcrossPagesAfterMultipleIngests(t *testing.T) {
+func TestRuntimeTelemetry_QueryPaginationRemainsStableAcrossMultipleIngests(t *testing.T) {
 	cfg := internalconfig.Default(t.TempDir())
 	cfg.Analysis.Mode = "disabled"
 	cfg.Policy.RulesPath = filepath.Join(t.TempDir(), "rules.yaml")

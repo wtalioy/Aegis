@@ -14,7 +14,7 @@ import (
 	"aegis/tests/helpers"
 )
 
-func TestRawEventPipelineProcessesExecFileAndConnect(t *testing.T) {
+func TestTelemetryPipeline_ProcessesExecFileAndConnectEventsEndToEnd(t *testing.T) {
 	processTree := proc.NewProcessTree(time.Minute, 1000, 16)
 	workloads := workload.NewRegistry(100)
 	profiles := proc.NewProfileRegistry()

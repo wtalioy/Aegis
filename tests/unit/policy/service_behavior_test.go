@@ -66,7 +66,7 @@ func connectRecord(t *testing.T, sample []byte) *telemetry.Record {
 	return ingested
 }
 
-func TestRuleServiceLifecyclePersistsAndPromotesRules(t *testing.T) {
+func TestPolicyService_CreatePromoteDeleteLifecycle(t *testing.T) {
 	repo := fakes.NewRuleRepository([]policy.Rule{
 		helpers.ActiveFileRule("existing", "/tmp/one", policy.ActionAlert),
 	})
@@ -113,7 +113,7 @@ func TestRuleServiceLifecyclePersistsAndPromotesRules(t *testing.T) {
 	}
 }
 
-func TestEvaluateTestingRuleRecordsHitWithoutAlert(t *testing.T) {
+func TestPolicyService_EvaluateTestingRuleRecordsHitWithoutAlert(t *testing.T) {
 	repo := fakes.NewRuleRepository([]policy.Rule{
 		{
 			Name:        "testing file",
@@ -142,7 +142,7 @@ func TestEvaluateTestingRuleRecordsHitWithoutAlert(t *testing.T) {
 	}
 }
 
-func TestEvaluateReturnsNoMatchForNilOrMissingRawPayload(t *testing.T) {
+func TestPolicyService_EvaluateReturnsNoMatchForNilOrMissingRawPayload(t *testing.T) {
 	service := policy.NewService(fakes.NewRuleRepository(nil), &fakes.KernelSync{}, 60, 10)
 	if err := service.Bootstrap(nil); err != nil {
 		t.Fatalf("bootstrap rules: %v", err)
@@ -166,7 +166,7 @@ func TestEvaluateReturnsNoMatchForNilOrMissingRawPayload(t *testing.T) {
 	}
 }
 
-func TestEvaluateExecAllowRuleReturnsAllowWithoutAlert(t *testing.T) {
+func TestPolicyService_EvaluateExecAllowRuleReturnsAllowWithoutAlert(t *testing.T) {
 	repo := fakes.NewRuleRepository([]policy.Rule{
 		{
 			Name:        "allow bash",
@@ -198,7 +198,7 @@ func TestEvaluateExecAllowRuleReturnsAllowWithoutAlert(t *testing.T) {
 	}
 }
 
-func TestEvaluateExecBlockedWithoutRuleReturnsSyntheticCriticalAlert(t *testing.T) {
+func TestPolicyService_EvaluateExecBlockedWithoutRuleReturnsSyntheticCriticalAlert(t *testing.T) {
 	service := policy.NewService(fakes.NewRuleRepository(nil), &fakes.KernelSync{}, 60, 10)
 	if err := service.Bootstrap(nil); err != nil {
 		t.Fatalf("bootstrap rules: %v", err)
@@ -216,7 +216,7 @@ func TestEvaluateExecBlockedWithoutRuleReturnsSyntheticCriticalAlert(t *testing.
 	}
 }
 
-func TestEvaluateFileAndConnectRulesCoverAlertAndBlockBranches(t *testing.T) {
+func TestPolicyService_EvaluateFileAndConnectRulesCoverAlertAndBlockBranches(t *testing.T) {
 	repo := fakes.NewRuleRepository([]policy.Rule{
 		{
 			Name:        "watch file",
@@ -263,7 +263,7 @@ func TestEvaluateFileAndConnectRulesCoverAlertAndBlockBranches(t *testing.T) {
 	}
 }
 
-func TestTestingRulesAndThresholdUpdatesReuseExistingHits(t *testing.T) {
+func TestPolicyService_TestingRulesAndThresholdUpdatesReuseExistingHits(t *testing.T) {
 	repo := fakes.NewRuleRepository([]policy.Rule{
 		{
 			Name:        "testing file",
@@ -310,7 +310,7 @@ func TestTestingRulesAndThresholdUpdatesReuseExistingHits(t *testing.T) {
 	}
 }
 
-func TestUpdatePreservesLifecycleFieldsWhenOmitted(t *testing.T) {
+func TestPolicyService_UpdatePreservesLifecycleFieldsWhenOmitted(t *testing.T) {
 	createdAt := time.Now().Add(-4 * time.Hour).UTC().Truncate(time.Second)
 	deployedAt := createdAt.Add(time.Hour)
 	promotedAt := createdAt.Add(2 * time.Hour)

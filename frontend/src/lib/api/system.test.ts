@@ -6,7 +6,7 @@ vi.mock('../http', () => ({
   requestJSON
 }))
 
-describe('system api', () => {
+describe('lib/api/system', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.useFakeTimers()
@@ -14,7 +14,7 @@ describe('system api', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
-  it('requests stats and alerts from the v1 system endpoints', async () => {
+  it('calls the v1 system stats and alerts endpoints', async () => {
     requestJSON
       .mockResolvedValueOnce({ processCount: 1 })
       .mockResolvedValueOnce([{ id: 'alert-1' }])

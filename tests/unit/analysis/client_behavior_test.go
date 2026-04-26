@@ -13,7 +13,7 @@ import (
 	"aegis/tests/fakes"
 )
 
-func TestAIServiceDiagnoseAndChatWithFakeProvider(t *testing.T) {
+func TestAIClient_DiagnoseChatAndStreamUseFakeProvider(t *testing.T) {
 	provider := fakes.NewAIProvider()
 	provider.SingleResponse = "diagnosis"
 	provider.MultiResponse = "chat response"
@@ -66,7 +66,7 @@ func TestAIServiceDiagnoseAndChatWithFakeProvider(t *testing.T) {
 	}
 }
 
-func TestAskAboutInsightUsesSingleChatProvider(t *testing.T) {
+func TestAIClient_AskAboutInsightUsesSingleChatProvider(t *testing.T) {
 	provider := fakes.NewAIProvider()
 	provider.SingleResponse = "insight answer"
 	service := aiservice.NewClient(provider)

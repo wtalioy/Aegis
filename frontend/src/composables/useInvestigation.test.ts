@@ -55,12 +55,12 @@ const connectEvent = {
   blocked: false
 }
 
-describe('useInvestigation', () => {
+describe('composable/useInvestigation', () => {
   beforeEach(() => {
     queryEvents.mockReset()
   })
 
-  it('tracks pagination state and hasMore fallback for full pages', async () => {
+  it('tracks pagination state and keeps hasMore true when a full page may imply more results', async () => {
     const investigation = useInvestigation()
     queryEvents.mockResolvedValue({
       events: [execEvent, fileEvent],
@@ -79,7 +79,7 @@ describe('useInvestigation', () => {
     expect(investigation.hasMore.value).toBe(true)
   })
 
-  it('dedupes load-more results against existing events', async () => {
+  it('dedupes load-more results against events already in memory', async () => {
     const investigation = useInvestigation()
     queryEvents
       .mockResolvedValueOnce({
@@ -107,7 +107,7 @@ describe('useInvestigation', () => {
     expect(investigation.hasMore.value).toBe(false)
   })
 
-  it('refreshes by replacing page one, deduping older pages, and capping history', async () => {
+  it('refreshes by replacing page one, deduping older pages, and capping retained history', async () => {
     const investigation = useInvestigation()
     queryEvents
       .mockResolvedValueOnce({
@@ -149,7 +149,7 @@ describe('useInvestigation', () => {
     expect(new Set(investigation.state.value.events.map((event) => event.id)).size).toBe(2000)
   })
 
-  it('returns null and stores an error when search fails', async () => {
+  it('returns null and stores an error message when search fails', async () => {
     const investigation = useInvestigation()
     queryEvents.mockRejectedValue(new Error('search failed'))
 

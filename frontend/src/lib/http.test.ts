@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 import { requestJSON } from './http'
 
-describe('requestJSON', () => {
+describe('lib/http requestJSON', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
   })

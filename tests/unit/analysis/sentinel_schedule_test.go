@@ -14,7 +14,7 @@ import (
 	"aegis/tests/fakes"
 )
 
-func TestSentinelPublishesTestingPromotionInsight(t *testing.T) {
+func TestSentinelSchedule_PublishesTestingPromotionInsight(t *testing.T) {
 	provider := fakes.NewAIProvider()
 	service := aiservice.NewClient(provider)
 	engine := rules.NewEngine([]policy.Rule{
